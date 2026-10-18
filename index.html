@@ -8234,6 +8234,7 @@ function netGuestUpdate(dt){
   if(M.phase!=='ended'&&netS.snapT<0.25) M.clock+=dt;
   netFxTick(dt);
   if(G.comboT>0){ G.comboT-=dt; if(G.comboT<=0) G.combo=0; }
+  Royale.update(dt); // every lane's per-frame presentation (the drop minimap, ring banners, the strip); host-only work is guarded inside each lane
   updateCamera(dt); updateHud();
 }
 /* 30 Hz while playing; a paused guest keeps a 4 Hz heartbeat (holding still) so the host never times it out. */
