@@ -4046,7 +4046,8 @@ function cityTarget(table,L){ var n=0; for(var i=0;i<table.length;i++) if(L>=tab
 function cityKeepUp(L){
   var live=(G.minis||[]).filter(function(m){ return !m.dead; }).length;
   G.minis=(G.minis||[]).filter(function(m){ return !m.dead||m.deadT<8; });
-  G.cityMiniT=(G.cityMiniT||0)-2; if(!rampRules()&&live<cityTarget(CITY_MINIS,L)&&G.cityMiniT<=0){ cityMini(); G.cityMiniT=20; }
+  var royale=isRoyale()&&Royale.match&&Royale.match.minisWanted, miniWant=royale?Royale.match.minisWanted():rampRules()?0:cityTarget(CITY_MINIS,L); // a match has its own schedule (ROYALE.md §4.3); Rampage has none
+  G.cityMiniT=(G.cityMiniT||0)-2; if(live<miniWant&&G.cityMiniT<=0){ if(royale) royaleMini(); else cityMini(); G.cityMiniT=20; }
   var helis=(G.bosses||[]).filter(function(b){ return !b.dead&&!b.campaign; }).length;
   G.cityHeliT=(G.cityHeliT||0)-2; if(helis<cityTarget(CITY_HELIS,L)&&G.cityHeliT<=0){ spawnHeli(); G.cityHeliT=40; }
   var mgs=G.humans.filter(function(h){ return !h.dead&&h.nest&&h.nest.mobile; }).length, mgWant=L>=1?Math.min(CITY_MG_MAX,1+Math.floor((L-1)/3)):0;
@@ -4314,7 +4315,7 @@ var RAMP_ESCORT_FROM=5, RAMP_ESCORT_N=2; // boss waves bring an armed escort fro
 function rampLead(){ var p=G.peakMob||0; return Math.max(0,Math.min(1,(p-RAMP_LEAD_MOB[0])/(RAMP_LEAD_MOB[1]-RAMP_LEAD_MOB[0])))*RAMP_LEAD_T; }
 function rampMin(){ if(G.match) return royalePeopleMin(); return ((G.freeT||0)+(G.mode==='rampage'?rampLead():0))/60; }
 function rampLevel(){ return Math.max(0,((G.freeT||0)-RAMP_LAG)/60*RAMP_PACE); }
-function rampPop(){ return Math.min(RAMP_POP_MAX,RAMP_POP0+RAMP_POP_PER*Math.floor(rampMin())); }
+function rampPop(){ if(isRoyale()&&Royale.match&&Royale.match.popTarget) return Royale.match.popTarget(); return Math.min(RAMP_POP_MAX,RAMP_POP0+RAMP_POP_PER*Math.floor(rampMin())); }
 function rampArmed(){ if((G.freeT||0)<RAMP_GUNS_AT) return 0; /* no guns at all before 1:10 */ var m=rampMin(), T=RAMP_ARMED, i; if(m>=T[T.length-1][0]) return 1; for(i=1;i<T.length;i++) if(m<T[i][0]){ var u=(m-T[i-1][0])/(T[i][0]-T[i-1][0]); return Math.round((T[i-1][1]+u*(T[i][1]-T[i-1][1]))*100)/100; } return 1; }
 /* Rampage fills in crowds, close by but out of sight, so the streets feel full rather than spread over the whole city. */
 function rampCrowd(){ var p=citySpawnPoint(450,1000); if(!p) return 0; var n=3+Math.floor(Math.random()*3), made=0;
@@ -7756,7 +7757,7 @@ function playerDefaults(){
 function newPlayer(id,opts){
   opts=opts||{};
   var P={id:id,name:String(opts.name||('P'+id)).slice(0,12),colour:(opts.colour!==undefined?opts.colour:(id-1))%ROYALE_COLOURS.length,skin:SKINS[opts.skin]?opts.skin:'zombie',
-    remote:!!opts.remote,alive:true,ghost:null,diedAt:null,place:null,input:{x:0,y:0,go:0,a:0,b:0},
+    remote:!!opts.remote,bot:!!opts.bot,alive:true,ghost:null,diedAt:null,place:null,input:{x:0,y:0,go:0,a:0,b:0},
     stats:{eaten:0,bites:0,taken:0,lost:0,ghostTaken:0,killedBy:{},peak:0,dmgTo:{},firstBite:{},bitesOn:{},hordeAtDeath:0}};
   var d=playerDefaults(); for(var f in d) P[f]=d[f];
   for(var i=0;i<PLAYER_FIELDS.length;i++){ var k=PLAYER_FIELDS[i]; if(!(k in P)) P[k]=undefined; }
@@ -7781,6 +7782,8 @@ function rampRules(){ return G.mode==='rampage'||G.mode==='royale'; }
 function noBrains(){ return G.mode==='rampage'||!!G.match; }
 /* The people's minute in a match: the 12-minute Rampage curve compressed into the match length (lane C may refine it). */
 function royalePeopleMin(){ var M=G.match; if(Royale.match&&Royale.match.peopleMin) return Royale.match.peopleMin(); return (M.clock/60)*12/(M.length/60); }
+/* A city mini boss for a match (ROYALE.md §4.3): spawned near a random living head, never only the host's. */
+function royaleMini(){ var P=randomLiving(); if(!P) return null; var was=G.cur; bindPlayer(P); var m=cityMini(true); bindPlayer(was); return m; }
 function royaleMinute(){ var M=G.match, rm=Math.floor(rampMin()); if(M.min===undefined) M.min=0; if(rm>M.min){ M.min=rm; var P=randomLiving(); if(P){ var was=G.cur; bindPlayer(P); rampMinute(); bindPlayer(was); } } }
 /* A bound player dies in a match: its line becomes strays for anyone, the head stays where it fell for the camera. */
 function royaleDie(){ var P=G.cur, cause=G.deathCause||'people', by=G.deathBy||0; G.deathCause=null; G.deathBy=0; P.stats.hordeAtDeath=G.segs.length; while(G.segs.length) makeStray(G.segs.pop()); G.hp=0; Royale.onDeath(P,cause,by); }
@@ -7852,7 +7855,7 @@ Royale.mount=function(id,html,css){
 };
 
 /* Hooks (ROYALE.md §6.2): the existing sections call these; each lane defines what it needs on its own object. */
-var ROYALE_LANES=['match','fights','ghosts','net','ui'];
+var ROYALE_LANES=['match','fights','ghosts','bots','tricks','net','ui']; // Phase 2 adds bots and tricks (ROYALE.md §11, §12)
 function royaleEach(fn,a,b,c,d){ for(var i=0;i<ROYALE_LANES.length;i++){ var L=Royale[ROYALE_LANES[i]]; if(L&&typeof L[fn]==='function') L[fn](a,b,c,d); } }
 Royale.update=function(dt){ royaleEach('update',dt); };
 Royale.draw=function(layer){ royaleEach('draw',layer); };
@@ -7887,7 +7890,7 @@ function playerById(id){ var ps=G.players||[]; for(var i=0;i<ps.length;i++) if(p
    3.4 KB for 300 zombies and 80 people. Every other message is plain JSON. */
 var NET_ABC='BCDFGHJKLMNPQRSTVWXZ', NET_HZ=20, NET_IN_HZ=30, NET_BEAT_HZ=4, NET_CULL=1200, NET_HOLD=5, NET_GONE=20, NET_AUTO=120, NET_EASE=0.1, NET_SNAP_D=150, NET_JOIN_WAIT=10, NET_HIST=96, NET_MAX_IN=1024;
 var NET_PEERJS=['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js','https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'];
-var NET_MUST={bite:1,death:1,ghost:1,ghostDown:1,phase:1,end:1}; // sent as an 'e' message the frame they happen (never lost); the rest ride the next snapshot's ev
+var NET_MUST={bite:1,death:1,ghost:1,ghostDown:1,phase:1,end:1,x:1}; // x: a lane's own event (ROYALE.md §6.5), always delivered // sent as an 'e' message the frame they happen (never lost); the rest ride the next snapshot's ev
 var NET_PROJ=['bullet','bolt','thrown','bile','grenade'], NET_FS=['','spray','tele'], NET_MST=['idle','chase','windup','recover','home'], NET_MSUB=['','swing','hose','pound','lob'];
 var NET_PROF=Object.keys(PROF), NET_PI={}, NET_ARMS=Object.keys(ARMS), NET_AI={}, NET_B64='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/', NET_B64C=[], NET_B64I={};
 var NET_WHY={version:'Turned away: a different version. Reload and try again.',full:'That lobby is full.',host:'The host has left.',left:'The host has left.'};
@@ -7897,7 +7900,7 @@ var NET_F_MOVE=64, NET_F_PANIC=128, NET_F_PUSH=256, NET_F_STUN=512, NET_F_FEAR=1
 
 var netS=netFresh();
 function netFresh(){
-  return {role:null,T:null,code:'',me:0,name:'',skin:'zombie',lobby:[],peers:{},clock:0,started:false,screen:'menu',msg:'',lastErr:null,autoT:NET_AUTO,timer:null,lastMs:0,
+  return {role:null,T:null,code:'',me:0,name:'',skin:'zombie',lobby:[],bots:null,peers:{},clock:0,started:false,screen:'menu',msg:'',lastErr:null,autoT:NET_AUTO,timer:null,lastMs:0,
     snapAcc:0,inAcc:0,inN:0,pend:[],tick:null,ended:false,recent:[],recentF:-1,helloAt:-1,rtt:0.3,joinT:0,quietT:0,leaving:false,waiting:false,
     snapT:0,snapDt:1/NET_HZ,lastSnapAt:-1,got:false,hmap:{},mmap:{},gmap:{},hist:[],hi:0,lag:0.3,corrX:0,corrY:0,corrH:0,hostX:null,hostY:null,sentN:[],sentI:0,ack:0,
     segPool:[],strayPool:[],projPool:[],foamPool:[],tyCache:{},sizes:{},maxBytes:0,uidSeq:0,midSeq:0,furM:null,furBase:null};
@@ -7932,7 +7935,7 @@ function netEncode(msg){ return msg.t==='s'?netPackSnap(msg):JSON.stringify(msg)
 function netDecode(str,packed){ try{ if(typeof str!=='string') return null; if(str.charAt(0)==='~') return packed?netUnpackSnap(str):null; var m=JSON.parse(str); return m&&typeof m==='object'?m:null; }catch(e){ return null; } }
 /* Positions are integers and headings two decimals (§6.3) both ways; the packed form changes only how they travel. */
 function netPackSnap(s){
-  var i, k, P, a, px, py, ph, hd={t:'s',n:s.n,ack:s.ack,clock:s.clock,phase:s.phase,ring:s.ring,crown:s.crown,fur:s.fur,gates:s.gates,foam:s.foam,players:[],minis:s.minis,ev:s.ev};
+  var i, k, P, a, px, py, ph, hd={t:'s',n:s.n,ack:s.ack,clock:s.clock,phase:s.phase,ring:s.ring,crown:s.crown,fur:s.fur,gates:s.gates,foam:s.foam,players:[],minis:s.minis,ev:s.ev,x:s.x||null};
   var ox=0, oy=0; for(i=0;i<s.humans.length;i++){ ox+=s.humans[i].x; oy+=s.humans[i].y; } if(i){ ox=Math.round(ox/i); oy=Math.round(oy/i); } else if(s.players.length){ ox=s.players[0].x; oy=s.players[0].y; } // the origin people and shots are counted from
   netBufN=0; netPut(ox); netPut(oy);
   for(i=0;i<s.players.length;i++){ P=s.players[i]; hd.players.push({id:P.id,alive:P.alive,hp:P.hp,maxHp:P.maxHp,x:P.x,y:P.y,h:P.h,r:P.r,n:P.n,ghost:P.ghost});
@@ -7948,7 +7951,7 @@ function netPackSnap(s){
 }
 function netUnpackSnap(str){
   var cut=str.lastIndexOf('~'), hd=JSON.parse(str.slice(1,cut)), R={s:str,i:cut+1}, i, k, n, px, py, ph;
-  var ox=netGet(R), oy=netGet(R), s={t:'s',n:hd.n,ack:hd.ack,clock:hd.clock,phase:hd.phase,ring:hd.ring,crown:hd.crown,fur:hd.fur||[],gates:hd.gates||[],foam:hd.foam||[],players:[],strays:[],humans:[],proj:[],minis:hd.minis||[],ev:hd.ev||[]};
+  var ox=netGet(R), oy=netGet(R), s={t:'s',n:hd.n,ack:hd.ack,clock:hd.clock,phase:hd.phase,ring:hd.ring,crown:hd.crown,fur:hd.fur||[],gates:hd.gates||[],foam:hd.foam||[],players:[],strays:[],humans:[],proj:[],minis:hd.minis||[],ev:hd.ev||[],x:hd.x||null};
   for(i=0;i<hd.players.length;i++){ var Q=hd.players[i], a=[]; n=netGet(R); px=Q.x; py=Q.y; ph=0;
     for(k=0;k<n;k++){ px+=netGet(R); py+=netGet(R); ph+=netGet(R); a.push(px,py,ph/100,netGet(R)); }
     s.players.push({id:Q.id,alive:Q.alive,hp:Q.hp,maxHp:Q.maxHp,x:Q.x,y:Q.y,h:Q.h,r:Q.r,n:Q.n,segs:a,ghost:Q.ghost}); }
@@ -8056,7 +8059,9 @@ function netEachPeer(fn){ var k; for(k in netS.peers) if(netOwn(netS.peers,k)) f
 function netFreeColour(){ var used={}, i; for(i=0;i<netS.lobby.length;i++) used[netS.lobby[i].colour]=1; for(i=0;i<ROYALE_COLOURS.length;i++) if(!used[i]) return i; return netS.lobby.length%ROYALE_COLOURS.length; }
 function netNextId(){ var m=0, i, L=netS.lobby; for(i=0;i<L.length;i++) m=Math.max(m,L[i].id); if(G&&G.players) for(i=0;i<G.players.length;i++) m=Math.max(m,G.players[i].id); return m+1; }
 function netSpecs(){ var ps=[], i, L=netS.lobby; for(i=0;i<L.length;i++) ps.push({id:L[i].id,name:L[i].name,colour:L[i].colour,skin:L[i].skin}); return ps; }
-function netStartMsg(){ return {t:'start',seed:G.match.seed,length:G.match.length,players:netSpecs()}; }
+/* The host's player list at START: the lobby, then the bots lane's plan for it (ROYALE.md §11), fixed for the match so a late joiner gets the same list. */
+function netBotsPlan(){ if(!netS.bots) netS.bots=(Royale.bots&&Royale.bots.plan)?(Royale.bots.plan(netSpecs())||[]):[]; return netS.bots; }
+function netStartMsg(){ return {t:'start',seed:G.match.seed,length:G.match.length,players:netSpecs().concat(netBotsPlan())}; }
 function netBye(peer,why){ netS.T.send(peer,{t:'bye',why:why}); if(netS.T.kick) netS.T.kick(peer); netQDel(peer); }
 /* A player made outside startMatch: its stats are rolled with it bound, then the previous player is bound again. */
 function netNewPlayer(id,o){ var P=newPlayer(id,o), was=G.cur; bindPlayer(P); G.st=stats(); if(was) bindPlayer(was); return P; }
@@ -8079,7 +8084,7 @@ function netHostMsg(peer,m){
     // mid-match: take back your own player (same name, nobody connected to it), else join as the dead (a ghost later, §7)
     var P=null, i, k; for(i=0;i<G.players.length;i++){ var Q=G.players[i]; if(Q!==G.me&&Q.name===name&&!netLivePeerOf(Q)){ P=Q; break; } }
     if(P){ netEachPeer(function(k2,o){ if(o!==q&&o.P===P) delete netS.peers[k2]; }); Royale.onRejoin(P); } // the old record goes: only the current one can time out
-    else { if(G.players.length>=ROYALE_MAX){ netBye(peer,'full'); return; }
+    else { var humans=0; for(i=0;i<G.players.length;i++) if(!G.players[i].bot) humans++; if(humans>=ROYALE_MAX){ netBye(peer,'full'); return; }
       P=netNewPlayer(netNextId(),{name:name,colour:netFreeColour(),skin:skin,remote:true}); P.alive=false; P.diedAt=G.match.clock; P.head.x=3300; P.head.y=3300; G.players.push(P); }
     q.P=P; q.id=P.id;
     for(k=0;k<netS.lobby.length;k++) if(netS.lobby[k].id===P.id) break;
@@ -8092,10 +8097,15 @@ function netHostMsg(peer,m){
     var I=Pi.input; I.x=x; I.y=y; I.go=netBit(m.go); I.a=netBit(m.a); I.b=netBit(m.b); return; }
   if(m.t==='drop'){ var Pd=q.P, dx=+m.x, dy=+m.y; if(!Pd||!G.match||!isFinite(dx)||!isFinite(dy)) return; // numbers only; Royale.match validates the spot and the phase
     dx=Math.max(0,Math.min(G.F.w,dx)); dy=Math.max(0,Math.min(G.F.h,dy)); if(Royale.match&&Royale.match.pickDrop) Royale.match.pickDrop(Pd,dx,dy); return; }
+  if(m.t==='x'){ var Lx=netLane(m.l), tx=netNow(); if(!Lx||!Lx.onMsg||!q.P||tx-(q.xT||0)<NET_X_GAP) return; q.xT=tx; Lx.onMsg(q.P,m); return; } // a lane's own message (ROYALE.md §6.5): the lane validates every field
   if(m.t==='again'){ q.again=(+m.revenge)|0||1; if(netS.started&&G.match&&G.match.phase==='ended'){ var L=netLobbyOf(q.id); netS.msg=(L?L.name:'Someone')+' wants another.'; } return; }
   if(m.t==='bye') netHostLeave(peer,true);
 }
 function netBit(v){ v=+v; return v>=0.5?1:0; }
+var NET_X_GAP=0.05; // a guest's lane messages: at most one every 50 ms; the rest are dropped
+function netLane(l){ return typeof l==='string'&&ROYALE_LANES.indexOf(l)>=0&&Royale[l]?Royale[l]:null; }
+/* The snapshot's per-lane field (ROYALE.md §6.5): {lane: lane.pack(guest)} for every lane that packs, null when none does. */
+function netLaneSnap(Pg){ var o=null, i; for(i=0;i<ROYALE_LANES.length;i++){ var L=Royale[ROYALE_LANES[i]]; if(L&&typeof L.pack==='function'){ var v=L.pack(Pg); if(v!==null&&v!==undefined) (o||(o={}))[ROYALE_LANES[i]]=v; } } return o; }
 function netLobbyOf(id){ for(var i=0;i<netS.lobby.length;i++) if(netS.lobby[i].id===id) return netS.lobby[i]; return null; }
 function netLivePeerOf(P){ var r=null; netEachPeer(function(k,q){ if(q.P===P&&q.live) r=q; }); return r; }
 function netHostLeave(peer,bye){
@@ -8134,7 +8144,7 @@ function netLost(why){
 }
 /* Both sides: build the match from the start message. Every device runs the same city from the seed (core). */
 function netBegin(seed,length,players,host){
-  var ps=[], i; for(i=0;i<players.length;i++) ps.push({id:players[i].id|0,name:netName(players[i].name),colour:players[i].colour|0,skin:netSkinOk(players[i].skin),remote:players[i].id!==netS.me});
+  var ps=[], i; for(i=0;i<players.length;i++) ps.push({id:players[i].id|0,name:netName(players[i].name),colour:players[i].colour|0,skin:netSkinOk(players[i].skin),remote:players[i].id!==netS.me,bot:!!players[i].bot});
   netS.started=true; netS.got=false; netS.ended=false; netS.hmap={}; netS.mmap={}; netS.gmap={}; netS.hist=[]; netS.hi=0; netS.corrX=netS.corrY=netS.corrH=0; netS.hostX=null; netS.ack=0; netS.pend=[];
   netS.ringSeen=false; netS.furM=null; netStopTimer(); netShow(false); netWait(false);
   startMatch({host:host,seed:seed>>>0,length:length||ROYALE_LEN,code:netS.code,players:ps,me:netS.me});
@@ -8143,7 +8153,7 @@ function netBegin(seed,length,players,host){
 /* A rematch (ROYALE.md §6.2): the host goes back to its lobby with everyone still connected; guests follow its 'lobby'. */
 function netEndToLobby(){
   if(Royale.ui&&Royale.ui.hide) Royale.ui.hide();
-  Royale.teardown(); G.match=null; netS.started=false; netS.ended=false; netWait(false);
+  Royale.teardown(); G.match=null; netS.started=false; netS.ended=false; netS.bots=null; netWait(false);
   state='lobby'; $('hud').classList.add('hidden');
   netS.screen='lobby'; netS.msg=''; netS.autoT=NET_AUTO; netShow(true); netStartTimer(); netRender();
 }
@@ -8206,7 +8216,7 @@ function netCentre(P){ var gm=P.ghost&&P.ghost.m; if(gm&&!gm.dead) return gm; re
 function netSnap(Pg,tick,ack){
   var M=G.match, t=tick||netS.tick||netTick(), c=netCentre(Pg), cx=c.x, cy=c.y, R2=NET_CULL*NET_CULL, i, k, ring=M.ring, dx, dy, F=G.F;
   var s={t:'s',n:M.n,ack:ack>0?ack:0,clock:netR2(M.clock),phase:M.phase,ring:{x:Math.round(ring.x),y:Math.round(ring.y),r:Math.round(ring.r),tx:Math.round(ring.tx),ty:Math.round(ring.ty),tr:Math.round(ring.tr),stepT:netR2(ring.stepT||0),step:ring.step|0},
-    crown:M.crown|0,fur:[],gates:t.gates,foam:[],players:[],strays:[],humans:[],proj:[],minis:[],ev:netS.pend};
+    crown:M.crown|0,fur:[],gates:t.gates,foam:[],players:[],strays:[],humans:[],proj:[],minis:[],ev:netS.pend,x:netLaneSnap(Pg)};
   for(i=0;i<G.players.length;i++){ var P=G.players[i], hd=netF(P,'head'), sg=netF(P,'segs'), st=netF(P,'st'), a=[], gm=P.ghost&&P.ghost.m;
     for(k=0;k<sg.length;k++){ var z=sg[k]; dx=z.x-cx; dy=z.y-cy; if(dx*dx+dy*dy<R2) a.push(Math.round(z.x),Math.round(z.y),netAng(z.tang||0),NET_PI[z.id]|0); }
     s.players.push({id:P.id,alive:!!P.alive,hp:Math.max(0,Math.ceil(netF(P,'hp')||0)),maxHp:Math.round(st?st.maxHp:100),x:Math.round(hd.x),y:Math.round(hd.y),h:netAng(hd.h),r:Math.round(hd.r*10)/10,n:sg.length,segs:a,
@@ -8262,6 +8272,7 @@ function netApply(s){
   netApplyWorld(s);
   for(i=0;i<s.players.length;i++) netApplyPlayer(s.players[i]);
   netApplyStrays(s.strays); netApplyHumans(s.humans); netApplyProj(s.proj); netApplyMinis(s.minis,s.players);
+  if(s.x&&typeof s.x==='object'){ var kx; for(kx in s.x) if(netOwn(s.x,kx)){ var Lu=netLane(kx); if(Lu&&Lu.unpack) Lu.unpack(s.x[kx]); } }
   if(s.ev&&s.ev.length) netEvents(s.ev,false);
 }
 /* Shoved furniture, shut gates and foam, so the predicted head meets what the host's head meets. */
@@ -8442,6 +8453,7 @@ function netEvents(list,must){
     else if(ev.k==='death'){ var D=playerById(ev.id); if(D&&D.alive&&G.match.phase!=='ended'){ Royale.onDeath(D,ev.cause,ev.by); G.match.events.length=0; } if(ev.id===me) Haptic.tap(60); }
     else if(ev.k==='ghostDown'){ if(ev.by===me){ Haptic.tap(30); stamp('GHOST DOWN',3,hd.x,hd.y); } }
     else if(ev.k==='phase'){ if(G.match.phase!=='ended'&&typeof ev.phase==='string') G.match.phase=ev.phase; }
+    else if(ev.k==='x'){ var Le=netLane(ev.l); if(Le&&Le.onEvent) Le.onEvent(ev); }
     else if(ev.k==='end'){ if(netS.ended) continue; netS.ended=true; var M=G.match, st=ev.stats&&typeof ev.stats==='object'?ev.stats:{}, j;
       M.placings=ev.placings||[]; M.winner=ev.winner||M.placings[0]||0; M.phase='ended';
       for(j=0;j<G.players.length;j++){ var Q=G.players[j], qs=netOwn(st,Q.id)?st[Q.id]:null; if(qs) for(var f in qs) if(netOwn(qs,f)&&netOwn(Q.stats,f)) Q.stats[f]=qs[f]; }
@@ -8467,7 +8479,7 @@ function netHtml(){
     '<div id="rlMenuB"><button class="big" id="rlHost">HOST A MATCH</button><br><button class="mid" id="rlToJoin">JOIN WITH A CODE</button></div>'+
     '<div id="rlJoin"><input id="rlCode" class="rlCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Lobby code"><button class="big" id="rlJoinBtn">JOIN</button></div>'+
     '<div id="rlLobby"><div class="tag">Lobby code</div><div class="rlBig" id="rlCodeBig"></div><button class="mid" id="rlShare">SHARE LINK</button>'+
-    '<ul class="rlList" id="rlList"></ul><button class="big" id="rlStart">START</button><div class="tag" id="rlCount"></div></div>'+
+    '<ul class="rlList" id="rlList"></ul><div id="rlExtra"></div><button class="big" id="rlStart">START</button><div class="tag" id="rlCount"></div></div>'+
     '<div class="tag rlMsg" id="rlMsg" role="status"></div><button class="link" id="rlBack">BACK</button></div></div><div id="rlWait" class="hidden" role="status"></div>';
 }
 function netMount(){
@@ -8513,6 +8525,7 @@ function netRender(){
     html+='<li><span class="rlDot" style="background:'+ROYALE_COLOURS[(L.colour|0)%ROYALE_COLOURS.length]+'"></span><span class="rlSkin">'+Art.rich(sk.icon)+'</span><span>'+netEsc(L.name)+'</span><span class="rlWho">'+(L.id===netS.me?'you':'')+(L.id===1?(L.id===netS.me?' · host':'host'):'')+'</span></li>'; }
   var ul=$('rlList'); if(ul&&ul._h!==html){ ul._h=html; ul.innerHTML=html; }
   vis('rlStart',netS.role==='host'); vis('rlShare',!!netS.code);
+  if(Royale.bots&&Royale.bots.lobby) Royale.bots.lobby(sc==='lobby'&&netS.role==='host',netS.lobby.length); // the bots lane fills #rlExtra (ROYALE.md §11)
   var ct=$('rlCount'); if(ct) ct.textContent=netS.role==='host'?(netS.lobby.length<2?'Waiting for someone to eat.':'Starts by itself in '+netClock(netS.autoT)+'.'):'The host starts it.';
   var mg=$('rlMsg'); if(mg) mg.textContent=netS.msg||'';
 }
@@ -8573,8 +8586,9 @@ Royale.net={
   },
   start:function(){
     if(netS.role!=='host'||netS.started) return false;
-    if(netS.lobby.length<2){ netS.msg='Needs one more horde.'; netRender(); return false; }
-    var seed=netMix(7)||1, msg={t:'start',seed:seed,length:ROYALE_LEN,players:netSpecs()};
+    netS.bots=null; var bots=netBotsPlan(); // planned fresh at START, then fixed for the match
+    if(netS.lobby.length+bots.length<2){ netS.msg='Needs one more horde.'; netRender(); return false; }
+    var seed=netMix(7)||1, msg={t:'start',seed:seed,length:ROYALE_LEN,players:netSpecs().concat(bots)};
     netEachPeer(function(k,q){ if(q.hello&&q.live) netS.T.send(q.peer,msg); });
     netBegin(seed,ROYALE_LEN,msg.players,true);
     netEachPeer(function(k,q){ if(q.hello) q.P=playerById(q.id); q.lastT=netNow(); });
@@ -8605,6 +8619,8 @@ Royale.net={
   onMatchEnd:function(){ if(netS.role==='host'&&G.match&&G.match.host&&G.match.events.length) netHostUpdate(0); },
   /* Events drained (host) or received (guest) this frame, for lanes that want a kill feed. */
   recent:function(){ return netS.recent; },
+  /* A lane's own message to the host (ROYALE.md §6.5): {t:'x', l:lane, ...fields}; the host hands it to Royale[lane].onMsg(P,m). */
+  sendLane:function(l,obj){ if(netS.role!=='guest'||!netS.T||!netLane(l)) return false; var m={t:'x',l:l}, k; if(obj) for(k in obj) if(netOwn(obj,k)&&k!=='t'&&k!=='l') m[k]=obj[k]; netS.T.send('host',m); return true; },
   fake:netFake, fakeHub:netFakeHub, encode:netEncode, decode:netDecode,
   _s:function(){ return netS; }, _snap:function(P,ack){ return netSnap(P,netTick(),ack||0); }
 };
@@ -8617,6 +8633,7 @@ Royale.net={
 var MATCH_DROP_T=10, MATCH_DROP_GAP=600, MATCH_WARN=10, MATCH_SHRINK=20, MATCH_LAST_R=300, MATCH_HEAD_DPS=8,
   MATCH_BURN_AFTER=1, MATCH_BURN_GAP=0.25, MATCH_GHOST_PCT=0.03, MATCH_CROWN_LEAD=2, MATCH_MAP_PX=280, MATCH_PICK_GAP=0.5,
   MATCH_NEAR_MAX=1500, MATCH_ROOM=110, MATCH_NEAR_TRIES=900, MATCH_FIRE=['#ffcf6b','#ff8a2b','#ff5a1f','#3a2a22'];
+var ROYALE_POP0=80, MATCH_MINI_FROM=30, MATCH_MINI_EVERY=90, MATCH_MINI_MAX=3; // the people from the first minute, and the mini-boss schedule (owner, 18 Oct)
 /* Lane-private state, reset by begin(). Nothing here travels in a snapshot: what guests need is on G.match. */
 var matchS=matchFresh();
 function matchFresh(){ return {picks:{},pending:{},pickAt:{},myPick:null,dropT:0,dropSec:-1,plan:[],warned:0,moved:0,o:{x:0,y:0,r:0},cd:{},strayCd:{},sb:{},
@@ -8928,7 +8945,9 @@ Royale.match={
   /* The people's minute: Rampage's 12-minute curve squeezed into the match (core's royalePeopleMin() reads it). */
   peopleMin:function(){ var M=G.match; return M?M.clock/60*12/(M.length/60):0; },
   /* Rampage's population rule on that minute (what rampPop() gives through rampMin()). */
-  popTarget:function(){ return Math.min(RAMP_POP_MAX,RAMP_POP0+RAMP_POP_PER*Math.floor(Royale.match.peopleMin())); },
+  popTarget:function(){ return Math.min(RAMP_POP_MAX,ROYALE_POP0+RAMP_POP_PER*Math.floor(Royale.match.peopleMin())); }, // rampPop() reads it in a match: more food from the first minute (owner, 18 Oct)
+  /* City mini bosses in a match (ROYALE.md §4.3; owner, 18 Oct: "drop mini bosses early"): the first from 0:30, one more every 90 s, three at most; cityKeepUp spawns them near a random living head. Ghosts are not counted. */
+  minisWanted:function(){ var M=G.match; if(!M||M.phase!=='play'||M.clock<MATCH_MINI_FROM) return 0; return Math.min(MATCH_MINI_MAX,1+Math.floor((M.clock-MATCH_MINI_FROM)/MATCH_MINI_EVERY)); },
   plan:function(){ return matchS.plan; },
   update:function(dt){
     var M=G.match; if(!M) return;
