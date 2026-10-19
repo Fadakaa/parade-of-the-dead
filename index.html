@@ -7897,12 +7897,24 @@ var NET_PEERJS=['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.
    (netIce): username = an expiry timestamp, credential = base64(HMAC-SHA1(secret, username)). NET_ICE is the fallback when
    Web Crypto is missing (plain http, old browsers, the sims): STUN only. A relay of our own is the Phase 3 item. */
 var NET_TURN_HOST='staticauth.openrelay.metered.ca', NET_TURN_SECRET='openrelayprojectsecret', NET_TURN_TTL=12*3600;
+/* A relay account of our own (Metered: app name + API key) beats the shared one: when NET_TURN_APP is set, netIce fetches
+   https://<app>.metered.live/api/v1/turn/credentials?apiKey=<key> (a JSON iceServers array) and falls back to the shared-secret
+   signing if that fails. The key sits in a public page: a playtest key, rotated from the dashboard. */
+var NET_TURN_APP='', NET_TURN_KEY='';
 var NET_STUN={urls:['stun:stun.l.google.com:19302','stun:stun.relay.metered.ca:80']};
 var NET_ICE=[NET_STUN];
 function netTurnUrls(){ return ['turn:'+NET_TURN_HOST+':80','turn:'+NET_TURN_HOST+':443','turn:'+NET_TURN_HOST+':443?transport=tcp','turns:'+NET_TURN_HOST+':443']; }
 /* cb(iceServers): synchronous with the fallback when there is no Web Crypto, after one HMAC otherwise; cached for the page. */
 function netIce(cb){
   if(netS.ice) return cb(netS.ice);
+  if(NET_TURN_APP&&NET_TURN_KEY&&typeof fetch==='function'){ var went=false; function next(){ if(went) return; went=true; netIceSign(cb); }
+    try{ fetch('https://'+NET_TURN_APP+'.metered.live/api/v1/turn/credentials?apiKey='+encodeURIComponent(NET_TURN_KEY)).then(function(r){ return r.ok?r.json():null; }).then(function(list){
+      if(went) return; var ok=list&&list.length&&list.some(function(x){ return x&&x.urls&&x.username&&x.credential; });
+      if(!ok) return next(); went=true; netS.ice=[NET_STUN].concat(list); cb(netS.ice); },next); }catch(e){ next(); }
+    return; }
+  netIceSign(cb);
+}
+function netIceSign(cb){
   var sub=typeof crypto!=='undefined'&&crypto.subtle&&typeof TextEncoder!=='undefined'?crypto.subtle:null;
   if(!sub||typeof btoa!=='function') return cb(NET_ICE);
   var user=String(Math.floor(Date.now()/1000)+NET_TURN_TTL), enc=new TextEncoder(), fell=false;
