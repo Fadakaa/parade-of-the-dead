@@ -7890,6 +7890,12 @@ function playerById(id){ var ps=G.players||[]; for(var i=0;i<ps.length;i++) if(p
    3.4 KB for 300 zombies and 80 people. Every other message is plain JSON. */
 var NET_ABC='BCDFGHJKLMNPQRSTVWXZ', NET_HZ=20, NET_IN_HZ=30, NET_BEAT_HZ=4, NET_CULL=1200, NET_HOLD=5, NET_GONE=20, NET_AUTO=120, NET_EASE=0.1, NET_SNAP_D=150, NET_JOIN_WAIT=10, NET_HIST=96, NET_MAX_IN=1024;
 var NET_PEERJS=['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js','https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'];
+/* ICE: Google STUN for the direct path and Open Relay (metered.ca's free TURN, ports 80/443, TCP too) for the pairs that cannot
+   see each other, which is most phone-network to Wi-Fi pairs. Without a relay a 5G guest hangs on "Calling the lobby service".
+   A relay of our own is the Phase 3 item; this one is public and rate-limited, fine for a lobby of twelve. */
+var NET_ICE=[{urls:['stun:stun.l.google.com:19302','stun:stun.relay.metered.ca:80']},
+  {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443'],username:'openrelayproject',credential:'openrelayproject'}];
+var NET_CONNECT_T=15000; // ms a host waits for the lobby service, a guest for the host's data channel, before giving up
 var NET_MUST={bite:1,death:1,ghost:1,ghostDown:1,phase:1,end:1,x:1}; // x: a lane's own event (ROYALE.md §6.5), always delivered // sent as an 'e' message the frame they happen (never lost); the rest ride the next snapshot's ev
 var NET_PROJ=['bullet','bolt','thrown','bile','grenade'], NET_FS=['','spray','tele'], NET_MST=['idle','chase','windup','recover','home'], NET_MSUB=['','swing','hose','pound','lob'];
 var NET_PROF=Object.keys(PROF), NET_PI={}, NET_ARMS=Object.keys(ARMS), NET_AI={}, NET_B64='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/', NET_B64C=[], NET_B64I={};
@@ -8010,17 +8016,19 @@ function netPeer(){
   function wire(c,id,cb){
     c.on('open',function(){ conns['#'+id]=c; if(cb){ cb(null); cb=null; } else T.fire('join',id); });
     c.on('data',function(d){ T.fire('msg',id,d); });
-    c.on('close',function(){ if(conns['#'+id]===c){ delete conns['#'+id]; T.fire('leave',id); } });
+    c.on('close',function(){ if(conns['#'+id]===c){ delete conns['#'+id]; T.fire('leave',id); } else if(cb){ cb('peer'); cb=null; } });
     c.on('error',function(){});
   }
   T.open=function(role,code,cb){
-    var hid='pod-royale-'+code, done=false; function fin(e){ if(!done){ done=true; cb(e); } }
+    var hid='pod-royale-'+code, done=false, wait=null; function fin(e){ if(!done){ done=true; if(wait) clearTimeout(wait); cb(e); } }
     T.role=role;
-    try{ peer=role==='host'?new window.Peer(hid,{debug:0}):new window.Peer({debug:0}); }catch(e){ return fin('service'); }
+    var po={debug:0,config:{iceServers:NET_ICE}};
+    try{ peer=role==='host'?new window.Peer(hid,po):new window.Peer(po); }catch(e){ return fin('service'); }
+    wait=setTimeout(function(){ if(done) return; netS.lastErr='timeout'; fin(role==='host'?'service':'timeout'); try{ peer.destroy(); }catch(e){} },NET_CONNECT_T);
     peer.on('error',function(e){ var t=e&&e.type; netS.lastErr=t||'error'; if(!done) fin(t==='unavailable-id'?'taken':t==='peer-unavailable'?'nolobby':t==='browser-incompatible'?'browser':'service'); else if(t==='peer-unavailable'&&role==='guest') T.fire('leave','host'); });
     peer.on('disconnected',function(){ try{ if(peer&&!peer.destroyed) peer.reconnect(); }catch(e){} }); // the signalling socket dropped: open data channels carry on, new joiners need it back
     if(role==='host'){ peer.on('open',function(){ fin(null); }); peer.on('connection',function(c){ wire(c,c.peer,null); }); }
-    else peer.on('open',function(){ if(done) return; var c; try{ c=peer.connect(hid,{reliable:true,serialization:'json'}); }catch(e){ return fin('service'); } wire(c,'host',fin); });
+    else peer.on('open',function(){ if(done) return; netS.msg='Knocking…'; netRender(); var c; try{ c=peer.connect(hid,{reliable:true,serialization:'json'}); }catch(e){ return fin('service'); } wire(c,'host',fin); });
   };
   T.send=function(id,msg){ var c=netOwn(conns,'#'+id)?conns['#'+id]:null, str=netEncode(msg); if(c&&c.open){ try{ c.send(str); T.count(id,msg.t,str); }catch(e){} } return str; };
   T.raw=function(id,str){ var c=netOwn(conns,'#'+id)?conns['#'+id]:null; if(c&&c.open) c.send(str); };
@@ -8540,12 +8548,13 @@ function netMakeTransport(opts,cb){
   var q=typeof location!=='undefined'?String(location.search||''):'', m=/[?&]net=fake/.test(q);
   if(m){ var lag=+((/[?&]lag=(\d+)/.exec(q)||[])[1]||0), loss=+((/[?&]loss=([\d.]+)/.exec(q)||[])[1]||0); return cb(null,netFake(netS.bcHub||(netS.bcHub=netFakeHub('pod-royale-fake')),{lag:lag,loss:loss,seed:netMix(3)%9973})); }
   netS.msg='Calling the lobby service…'; netRender();
-  netLoad(function(err){ if(err){ netS.msg="Can't load the lobby library. Check your connection."; netRender(); return cb(err); } netS.msg=''; cb(null,netPeer()); });
+  netLoad(function(err){ if(err){ netS.msg="Can't load the lobby library. Check your connection."; netRender(); return cb(err); } cb(null,netPeer()); }); // the line stays up until the peer opens ("Knocking…") or fails
 }
 /* The lobby failed after the library loaded: say which step, so a screenshot tells us whether the signalling socket is blocked
    (a sandboxed page: network, socket-error, socket-closed) or the browser lacks WebRTC. */
 function netServiceMsg(e){
   if(e==='browser') return 'This browser has no WebRTC. Try another.';
+  if(e==='timeout'||e==='peer'){ netS.lastErr=null; return "Couldn't connect to the host. Same Wi-Fi is the safe bet. Try again."; }
   var t=netS.lastErr||e; netS.lastErr=null;
   if(t==='network'||t==='socket-error'||t==='socket-closed'||t==='server-error') return "Can't reach the lobby service ("+t+"). Check your connection, or open the game at its own web address.";
   return "Can't reach the lobby service ("+t+").";
