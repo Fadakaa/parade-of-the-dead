@@ -8586,7 +8586,7 @@ Royale.net={
   load:netLoad,
   /* Host a lobby. opts (tests): {transport, code}. When a match is already running here (a host match), adopt it. */
   host:function(name,skin,opts){
-    opts=opts||{}; if(netS.role) Royale.net.leave();
+    opts=opts||{}; if(netS.role){ Royale.net.leave(); netS.screen='menu'; netShow(true); }
     netS.role='host'; netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=1; netS.msg='';
     netS.code=opts.code||netCode(); netS.autoT=NET_AUTO; netS.pend=[]; netS.peers={};
     if(G&&G.match&&G.match.host){ netS.started=true; netS.lobby=[]; for(var i=0;i<G.players.length;i++){ var P=G.players[i]; netS.lobby.push({id:P.id,name:P.name,colour:P.colour,skin:P.skin,peer:null}); } netS.me=G.me.id; }
@@ -8599,7 +8599,7 @@ Royale.net={
         netS.msg=''; netBind(T); if(!netS.started){ netS.screen='lobby'; netShow(true); } netStartTimer(); netRender(); }); })(); });
   },
   join:function(code,name,skin,opts){
-    opts=opts||{}; if(netS.role) Royale.net.leave();
+    opts=opts||{}; if(netS.role){ Royale.net.leave(); netS.screen='join'; netShow(true); } // a second tap while the first knock runs: start over, panel still up
     netS.role='guest'; netS.code=String(code||'').toUpperCase(); netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=0; netS.lobby=[]; netS.joinT=0; netS.msg='Knocking…'; netRender();
     netMakeTransport(opts,function(err,T){ if(err){ netS.role=null; return; }
       T.open('guest',netS.code,function(e){
