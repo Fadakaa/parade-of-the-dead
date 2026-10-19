@@ -7896,6 +7896,7 @@ var NET_PEERJS=['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.
 var NET_ICE=[{urls:['stun:stun.l.google.com:19302','stun:stun.relay.metered.ca:80']},
   {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443'],username:'openrelayproject',credential:'openrelayproject'}];
 var NET_CONNECT_T=15000; // ms a host waits for the lobby service, a guest for the host's data channel, before giving up
+var NET_KNOCKS=8, NET_KNOCK_GAP=3000; // a guest whose knock finds no lobby (the host's screen is away: iOS drops a backgrounded page's socket) knocks again, 8 times 3 s apart
 var NET_MUST={bite:1,death:1,ghost:1,ghostDown:1,phase:1,end:1,x:1}; // x: a lane's own event (ROYALE.md §6.5), always delivered // sent as an 'e' message the frame they happen (never lost); the rest ride the next snapshot's ev
 var NET_PROJ=['bullet','bolt','thrown','bile','grenade'], NET_FS=['','spray','tele'], NET_MST=['idle','chase','windup','recover','home'], NET_MSUB=['','swing','hose','pound','lob'];
 var NET_PROF=Object.keys(PROF), NET_PI={}, NET_ARMS=Object.keys(ARMS), NET_AI={}, NET_B64='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/', NET_B64C=[], NET_B64I={};
@@ -8020,16 +8021,28 @@ function netPeer(){
     c.on('error',function(){});
   }
   T.open=function(role,code,cb){
-    var hid='pod-royale-'+code, done=false, wait=null; function fin(e){ if(!done){ done=true; if(wait) clearTimeout(wait); cb(e); } }
+    var hid='pod-royale-'+code, done=false, wait=null, knocks=0, cur=null; function fin(e){ if(!done){ done=true; if(wait) clearTimeout(wait); cb(e); } }
     T.role=role;
+    function arm(){ if(wait) clearTimeout(wait); wait=setTimeout(function(){ if(done) return; netS.lastErr='timeout'; fin(role==='host'?'service':'timeout'); try{ peer.destroy(); }catch(e){} },NET_CONNECT_T); }
+    /* The guest's knock: connect to the host's id. No lobby there yet (peer-unavailable) or a channel that dies before it opens:
+       knock again a few times, so a host who is still in Messages with the link is found when they come back. */
+    function knock(){ if(done||!peer||peer.destroyed) return; var c; try{ c=peer.connect(hid,{reliable:true,serialization:'json'}); }catch(e){ return fin('service'); } cur=c; arm();
+      wire(c,'host',function(e){ if(c!==cur) return; if(!e) return fin(null); again(e); }); }
+    function again(e){ if(done) return; if(knocks>=NET_KNOCKS) return fin(e==='peer'?'peer':'nolobby'); knocks++; cur=null;
+      netS.msg="Knocking… no answer yet. Is the host's screen on?"; netRender(); setTimeout(knock,NET_KNOCK_GAP); }
     var po={debug:0,config:{iceServers:NET_ICE}};
     try{ peer=role==='host'?new window.Peer(hid,po):new window.Peer(po); }catch(e){ return fin('service'); }
-    wait=setTimeout(function(){ if(done) return; netS.lastErr='timeout'; fin(role==='host'?'service':'timeout'); try{ peer.destroy(); }catch(e){} },NET_CONNECT_T);
-    peer.on('error',function(e){ var t=e&&e.type; netS.lastErr=t||'error'; if(!done) fin(t==='unavailable-id'?'taken':t==='peer-unavailable'?'nolobby':t==='browser-incompatible'?'browser':'service'); else if(t==='peer-unavailable'&&role==='guest') T.fire('leave','host'); });
+    arm();
+    peer.on('error',function(e){ var t=e&&e.type; netS.lastErr=t||'error';
+      if(!done){ if(t==='peer-unavailable'&&role==='guest') again('nolobby'); else fin(t==='unavailable-id'?'taken':t==='peer-unavailable'?'nolobby':t==='browser-incompatible'?'browser':'service'); }
+      else if(t==='peer-unavailable'&&role==='guest') T.fire('leave','host'); });
     peer.on('disconnected',function(){ try{ if(peer&&!peer.destroyed) peer.reconnect(); }catch(e){} }); // the signalling socket dropped: open data channels carry on, new joiners need it back
     if(role==='host'){ peer.on('open',function(){ fin(null); }); peer.on('connection',function(c){ wire(c,c.peer,null); }); }
-    else peer.on('open',function(){ if(done) return; netS.msg='Knocking…'; netRender(); var c; try{ c=peer.connect(hid,{reliable:true,serialization:'json'}); }catch(e){ return fin('service'); } wire(c,'host',fin); });
+    else peer.on('open',function(){ if(done||cur) return; netS.msg='Knocking…'; netRender(); knock(); });
   };
+  /* Back in front (iOS freezes a backgrounded page and its socket): reconnect to the lobby service if it dropped. */
+  T.wake=function(){ try{ if(peer&&!peer.destroyed&&peer.disconnected) peer.reconnect(); }catch(e){} };
+  if(typeof document!=='undefined'&&document.addEventListener) document.addEventListener('visibilitychange',function(){ if(!document.hidden) T.wake(); });
   T.send=function(id,msg){ var c=netOwn(conns,'#'+id)?conns['#'+id]:null, str=netEncode(msg); if(c&&c.open){ try{ c.send(str); T.count(id,msg.t,str); }catch(e){} } return str; };
   T.raw=function(id,str){ var c=netOwn(conns,'#'+id)?conns['#'+id]:null; if(c&&c.open) c.send(str); };
   T.kick=function(id){ var c=netOwn(conns,'#'+id)?conns['#'+id]:null; if(c){ delete conns['#'+id]; setTimeout(function(){ try{ c.close(); }catch(e){} },300); } };
