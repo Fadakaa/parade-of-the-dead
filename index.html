@@ -7901,12 +7901,17 @@ var NET_TURN_HOST='staticauth.openrelay.metered.ca', NET_TURN_SECRET='openrelayp
    https://<app>.metered.live/api/v1/turn/credentials?apiKey=<key> (a JSON iceServers array) and falls back to the shared-secret
    signing if that fails. The key sits in a public page: a playtest key, rotated from the dashboard. */
 var NET_TURN_APP='', NET_TURN_KEY='';
+/* Static credentials from that account (Metered dashboard → TURN server → credentials) win over everything: no fetch, no signing.
+   The free plan serves them from standard.relay.metered.ca. Owner's playtest credential, 20 Oct; rotate from the dashboard. */
+var NET_TURN_USER='163554d8363faf0133e7b341', NET_TURN_PASS='d4hUnUKyWgrmZnOC', NET_TURN_RELAY='standard.relay.metered.ca';
+function netTurnStatic(){ var h=NET_TURN_RELAY; return [NET_STUN,{urls:['turn:'+h+':80','turn:'+h+':80?transport=tcp','turn:'+h+':443','turns:'+h+':443?transport=tcp'],username:NET_TURN_USER,credential:NET_TURN_PASS}]; }
 var NET_STUN={urls:['stun:stun.l.google.com:19302','stun:stun.relay.metered.ca:80']};
 var NET_ICE=[NET_STUN];
 function netTurnUrls(){ return ['turn:'+NET_TURN_HOST+':80','turn:'+NET_TURN_HOST+':443','turn:'+NET_TURN_HOST+':443?transport=tcp','turns:'+NET_TURN_HOST+':443']; }
 /* cb(iceServers): synchronous with the fallback when there is no Web Crypto, after one HMAC otherwise; cached for the page. */
 function netIce(cb){
   if(netS.ice) return cb(netS.ice);
+  if(NET_TURN_USER&&NET_TURN_PASS){ netS.ice=netTurnStatic(); return cb(netS.ice); }
   if(NET_TURN_APP&&NET_TURN_KEY&&typeof fetch==='function'){ var went=false; function next(){ if(went) return; went=true; netIceSign(cb); }
     try{ fetch('https://'+NET_TURN_APP+'.metered.live/api/v1/turn/credentials?apiKey='+encodeURIComponent(NET_TURN_KEY)).then(function(r){ return r.ok?r.json():null; }).then(function(list){
       if(went) return; var ok=list&&list.length&&list.some(function(x){ return x&&x.urls&&x.username&&x.credential; });
