@@ -8019,6 +8019,7 @@ function netPeer(){
     c.on('data',function(d){ T.fire('msg',id,d); });
     c.on('close',function(){ if(conns['#'+id]===c){ delete conns['#'+id]; T.fire('leave',id); } else if(cb){ cb('peer'); cb=null; } });
     c.on('error',function(){});
+    c.on('iceStateChanged',function(st){ if((st==='failed'||st==='closed')&&cb){ cb('peer'); cb=null; } }); // the route to the host fell through before the channel opened: another knock now, not after the 15 s timer
   }
   T.open=function(role,code,cb){
     var hid='pod-royale-'+code, done=false, wait=null, knocks=0, cur=null; function fin(e){ if(!done){ done=true; if(wait) clearTimeout(wait); cb(e); } }
