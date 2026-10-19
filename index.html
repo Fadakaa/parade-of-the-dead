@@ -7891,10 +7891,41 @@ function playerById(id){ var ps=G.players||[]; for(var i=0;i<ps.length;i++) if(p
 var NET_ABC='BCDFGHJKLMNPQRSTVWXZ', NET_HZ=20, NET_IN_HZ=30, NET_BEAT_HZ=4, NET_CULL=1200, NET_HOLD=5, NET_GONE=20, NET_AUTO=120, NET_EASE=0.1, NET_SNAP_D=150, NET_JOIN_WAIT=10, NET_HIST=96, NET_MAX_IN=1024;
 var NET_PEERJS=['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js','https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'];
 /* ICE: Google STUN for the direct path and Open Relay (metered.ca's free TURN, ports 80/443, TCP too) for the pairs that cannot
-   see each other, which is most phone-network to Wi-Fi pairs. Without a relay a 5G guest hangs on "Calling the lobby service".
-   A relay of our own is the Phase 3 item; this one is public and rate-limited, fine for a lobby of twelve. */
-var NET_ICE=[{urls:['stun:stun.l.google.com:19302','stun:stun.relay.metered.ca:80']},
-  {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443'],username:'openrelayproject',credential:'openrelayproject'}];
+   see each other, which is most phone-network to Wi-Fi pairs: without a relay a 5G guest never reaches a Wi-Fi host. Open Relay
+   withdrew its public username/password in 2026; what it still publishes is the shared-secret mode (TURN REST, coturn
+   use-auth-secret) on staticauth.openrelay.metered.ca, so the page signs its own time-limited credentials with Web Crypto
+   (netIce): username = an expiry timestamp, credential = base64(HMAC-SHA1(secret, username)). NET_ICE is the fallback when
+   Web Crypto is missing (plain http, old browsers, the sims): STUN only. A relay of our own is the Phase 3 item. */
+var NET_TURN_HOST='staticauth.openrelay.metered.ca', NET_TURN_SECRET='openrelayprojectsecret', NET_TURN_TTL=12*3600;
+var NET_STUN={urls:['stun:stun.l.google.com:19302','stun:stun.relay.metered.ca:80']};
+var NET_ICE=[NET_STUN];
+function netTurnUrls(){ return ['turn:'+NET_TURN_HOST+':80','turn:'+NET_TURN_HOST+':443','turn:'+NET_TURN_HOST+':443?transport=tcp','turns:'+NET_TURN_HOST+':443']; }
+/* cb(iceServers): synchronous with the fallback when there is no Web Crypto, after one HMAC otherwise; cached for the page. */
+function netIce(cb){
+  if(netS.ice) return cb(netS.ice);
+  var sub=typeof crypto!=='undefined'&&crypto.subtle&&typeof TextEncoder!=='undefined'?crypto.subtle:null;
+  if(!sub||typeof btoa!=='function') return cb(NET_ICE);
+  var user=String(Math.floor(Date.now()/1000)+NET_TURN_TTL), enc=new TextEncoder(), fell=false;
+  function fallback(){ if(fell) return; fell=true; cb(NET_ICE); }
+  try{
+    sub.importKey('raw',enc.encode(NET_TURN_SECRET),{name:'HMAC',hash:'SHA-1'},false,['sign']).then(function(k){ return sub.sign('HMAC',k,enc.encode(user)); }).then(function(sig){
+      var b=new Uint8Array(sig), str='', i; for(i=0;i<b.length;i++) str+=String.fromCharCode(b[i]);
+      netS.ice=[NET_STUN,{urls:netTurnUrls(),username:user,credential:btoa(str)}]; if(!fell) cb(netS.ice); },fallback);
+  }catch(e){ fallback(); }
+}
+/* Can this phone reach a relay at all? A relay-only RTCPeerConnection that yields one relay candidate within 6 s says yes.
+   The answer shows on the lobby screen (netS.relay: null unknown, true, false) so a screenshot says which side has no route. */
+function netProbeRelay(){
+  if(netS.relay!==null||netS.probing||typeof RTCPeerConnection==='undefined') return; netS.probing=true;
+  netIce(function(ice){ var pc=null, t=null, got=false;
+    function end(ok){ if(got) return; got=true; netS.probing=false; netS.relay=!!ok; if(t) clearTimeout(t); try{ if(pc) pc.close(); }catch(e){} netRender(); }
+    if(!ice.some(function(s){ return s.username; })) return end(false);
+    try{ pc=new RTCPeerConnection({iceServers:ice,iceTransportPolicy:'relay'}); pc.createDataChannel('probe');
+      pc.onicecandidate=function(e){ if(e&&e.candidate&&/ typ relay /.test(e.candidate.candidate||'')) end(true); else if(e&&!e.candidate) end(false); };
+      pc.createOffer().then(function(o){ return pc.setLocalDescription(o); }).then(null,function(){ end(false); });
+      t=setTimeout(function(){ end(false); },6000);
+    }catch(e){ end(false); } });
+}
 var NET_CONNECT_T=15000; // ms a host waits for the lobby service, a guest for the host's data channel, before giving up
 var NET_KNOCKS=8, NET_KNOCK_GAP=3000; // a guest whose knock finds no lobby (the host's screen is away: iOS drops a backgrounded page's socket) knocks again, 8 times 3 s apart
 var NET_MUST={bite:1,death:1,ghost:1,ghostDown:1,phase:1,end:1,x:1}; // x: a lane's own event (ROYALE.md §6.5), always delivered // sent as an 'e' message the frame they happen (never lost); the rest ride the next snapshot's ev
@@ -7907,7 +7938,7 @@ var NET_F_MOVE=64, NET_F_PANIC=128, NET_F_PUSH=256, NET_F_STUN=512, NET_F_FEAR=1
 
 var netS=netFresh();
 function netFresh(){
-  return {role:null,T:null,code:'',me:0,name:'',skin:'zombie',lobby:[],bots:null,peers:{},clock:0,started:false,screen:'menu',msg:'',lastErr:null,autoT:NET_AUTO,timer:null,lastMs:0,
+  return {role:null,T:null,code:'',me:0,name:'',skin:'zombie',lobby:[],bots:null,peers:{},clock:0,started:false,screen:'menu',msg:'',lastErr:null,ice:null,relay:null,probing:false,autoT:NET_AUTO,timer:null,lastMs:0,
     snapAcc:0,inAcc:0,inN:0,pend:[],tick:null,ended:false,recent:[],recentF:-1,helloAt:-1,rtt:0.3,joinT:0,quietT:0,leaving:false,waiting:false,
     snapT:0,snapDt:1/NET_HZ,lastSnapAt:-1,got:false,hmap:{},mmap:{},gmap:{},hist:[],hi:0,lag:0.3,corrX:0,corrY:0,corrH:0,hostX:null,hostY:null,sentN:[],sentI:0,ack:0,
     segPool:[],strayPool:[],projPool:[],foamPool:[],tyCache:{},sizes:{},maxBytes:0,uidSeq:0,midSeq:0,furM:null,furBase:null};
@@ -8031,7 +8062,8 @@ function netPeer(){
       wire(c,'host',function(e){ if(c!==cur) return; if(!e) return fin(null); again(e); }); }
     function again(e){ if(done) return; if(knocks>=NET_KNOCKS) return fin(e==='peer'?'peer':'nolobby'); knocks++; cur=null;
       netS.msg="Knocking… no answer yet. Is the host's screen on?"; netRender(); setTimeout(knock,NET_KNOCK_GAP); }
-    var po={debug:0,config:{iceServers:NET_ICE}};
+    netIce(function(ice){ if(done) return;
+    var po={debug:0,config:{iceServers:ice}};
     try{ peer=role==='host'?new window.Peer(hid,po):new window.Peer(po); }catch(e){ return fin('service'); }
     arm();
     peer.on('error',function(e){ var t=e&&e.type; netS.lastErr=t||'error';
@@ -8040,6 +8072,7 @@ function netPeer(){
     peer.on('disconnected',function(){ try{ if(peer&&!peer.destroyed) peer.reconnect(); }catch(e){} }); // the signalling socket dropped: open data channels carry on, new joiners need it back
     if(role==='host'){ peer.on('open',function(){ fin(null); }); peer.on('connection',function(c){ wire(c,c.peer,null); }); }
     else peer.on('open',function(){ if(done||cur) return; netS.msg='Knocking…'; netRender(); knock(); });
+    });
   };
   /* Back in front (iOS freezes a backgrounded page and its socket): reconnect to the lobby service if it dropped. */
   T.wake=function(){ try{ if(peer&&!peer.destroyed&&peer.disconnected) peer.reconnect(); }catch(e){} };
@@ -8492,7 +8525,7 @@ var NET_CSS='#royaleLobby .overlay{z-index:12}#royaleLobby .poster{position:rela
   '.rlList li{display:flex;align-items:center;gap:8px;padding:6px 10px;font:700 15px var(--font);border-top:2px solid rgba(28,26,36,.15)}.rlList li:first-child{border-top:0}'+
   '.rlDot{width:16px;height:16px;border-radius:50%;border:2px solid var(--ink);flex:none}.rlSkin{width:22px;height:22px;flex:none;display:inline-flex}.rlSkin svg{width:100%;height:100%}'+
   '.rlWho{margin-left:auto;font:600 11px var(--font);color:var(--muted);text-transform:uppercase;letter-spacing:1px}'+
-  '.rlMsg{min-height:1.3em;color:var(--blood);font-weight:700}.rl .hidden{display:none!important}'+
+  '.rlMsg{min-height:1.3em;color:var(--blood);font-weight:700}.rlNet{font-size:12px;opacity:.75;min-height:1.2em}.rl .hidden{display:none!important}'+
   '#rlWait{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:13;background:var(--bone);color:var(--ink);border:3px solid var(--ink);box-shadow:4px 4px 0 var(--blood);padding:8px 14px;font:700 14px var(--font);border-radius:4px;max-width:90vw;text-align:center}#rlWait.hidden{display:none}';
 function netHtml(){
   return '<div class="overlay" id="rlOv"><div class="poster small rl"><h2>PARADE ROYALE</h2>'+
@@ -8502,7 +8535,7 @@ function netHtml(){
     '<div id="rlJoin"><input id="rlCode" class="rlCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Lobby code"><button class="big" id="rlJoinBtn">JOIN</button></div>'+
     '<div id="rlLobby"><div class="tag">Lobby code</div><div class="rlBig" id="rlCodeBig"></div><button class="mid" id="rlShare">SHARE LINK</button>'+
     '<ul class="rlList" id="rlList"></ul><div id="rlExtra"></div><button class="big" id="rlStart">START</button><div class="tag" id="rlCount"></div></div>'+
-    '<div class="tag rlMsg" id="rlMsg" role="status"></div><button class="link" id="rlBack">BACK</button></div></div><div id="rlWait" class="hidden" role="status"></div>';
+    '<div class="tag rlMsg" id="rlMsg" role="status"></div><div class="tag rlNet" id="rlNet"></div><button class="link" id="rlBack">BACK</button></div></div><div id="rlWait" class="hidden" role="status"></div>';
 }
 function netMount(){
   if(typeof document==='undefined') return null;
@@ -8550,6 +8583,7 @@ function netRender(){
   if(Royale.bots&&Royale.bots.lobby) Royale.bots.lobby(sc==='lobby'&&netS.role==='host',netS.lobby.length); // the bots lane fills #rlExtra (ROYALE.md §11)
   var ct=$('rlCount'); if(ct) ct.textContent=netS.role==='host'?(netS.lobby.length<2?'Waiting for someone to eat.':'Starts by itself in '+netClock(netS.autoT)+'.'):'The host starts it.';
   var mg=$('rlMsg'); if(mg) mg.textContent=netS.msg||'';
+  var ng=$('rlNet'); if(ng) ng.textContent=netS.relay===true?'Relay: ready.':netS.relay===false?'Relay: none from this phone. Same Wi-Fi as the host, or try again.':'';
 }
 function netClock(t){ t=Math.max(0,Math.ceil(t)); var s=t%60; return Math.floor(t/60)+':'+(s<10?'0':'')+s; }
 function netEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -8582,13 +8616,13 @@ Royale.net={
   open:function(code){
     netMount(); netS.msg=''; var c=String(code||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);
     netS.screen=c?'join':'menu'; var ci=$('rlCode'); if(ci) ci.value=c; netShow(true); netRender();
-    var q=typeof location!=='undefined'?String(location.search||''):''; if(!/[?&]net=fake/.test(q)) netLoad(function(err){ if(err&&!netS.role){ netS.msg="Can't load the lobby service. Check your connection."; netRender(); } });
+    var q=typeof location!=='undefined'?String(location.search||''):''; if(!/[?&]net=fake/.test(q)){ netLoad(function(err){ if(err&&!netS.role){ netS.msg="Can't load the lobby service. Check your connection."; netRender(); } }); netProbeRelay(); }
   },
   load:netLoad,
   /* Host a lobby. opts (tests): {transport, code}. When a match is already running here (a host match), adopt it. */
   host:function(name,skin,opts){
     opts=opts||{}; if(netS.role){ Royale.net.leave(); netS.screen='menu'; netShow(true); }
-    netS.role='host'; netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=1; netS.msg='';
+    netS.role='host'; netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=1; netS.msg=''; if(!opts.transport) netProbeRelay();
     netS.code=opts.code||netCode(); netS.autoT=NET_AUTO; netS.pend=[]; netS.peers={};
     if(G&&G.match&&G.match.host){ netS.started=true; netS.lobby=[]; for(var i=0;i<G.players.length;i++){ var P=G.players[i]; netS.lobby.push({id:P.id,name:P.name,colour:P.colour,skin:P.skin,peer:null}); } netS.me=G.me.id; }
     else netS.lobby=[{id:1,name:netS.name,colour:0,skin:netS.skin,peer:null}];
@@ -8601,7 +8635,7 @@ Royale.net={
   },
   join:function(code,name,skin,opts){
     opts=opts||{}; if(netS.role){ Royale.net.leave(); netS.screen='join'; netShow(true); } // a second tap while the first knock runs: start over, panel still up
-    netS.role='guest'; netS.code=String(code||'').toUpperCase(); netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=0; netS.lobby=[]; netS.joinT=0; netS.msg='Knocking…'; netRender();
+    netS.role='guest'; netS.code=String(code||'').toUpperCase(); netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=0; netS.lobby=[]; netS.joinT=0; netS.msg='Knocking…'; netRender(); if(!opts.transport) netProbeRelay();
     netMakeTransport(opts,function(err,T){ if(err){ netS.role=null; return; }
       T.open('guest',netS.code,function(e){
         if(e){ netS.role=null; netS.msg=e==='nolobby'?'No lobby with that code.':netServiceMsg(e); netRender(); return; }
@@ -8645,6 +8679,7 @@ Royale.net={
   /* A lane's own message to the host (ROYALE.md §6.5): {t:'x', l:lane, ...fields}; the host hands it to Royale[lane].onMsg(P,m). */
   sendLane:function(l,obj){ if(netS.role!=='guest'||!netS.T||!netLane(l)) return false; var m={t:'x',l:l}, k; if(obj) for(k in obj) if(netOwn(obj,k)&&k!=='t'&&k!=='l') m[k]=obj[k]; netS.T.send('host',m); return true; },
   fake:netFake, fakeHub:netFakeHub, encode:netEncode, decode:netDecode,
+  ice:netIce, probeRelay:netProbeRelay,
   _s:function(){ return netS; }, _snap:function(P,ack){ return netSnap(P,netTick(),ack||0); }
 };
 /* ---------- Parade Royale: match (lane C; ROYALE.md §4, §4.2) ---------- */
