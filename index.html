@@ -8583,7 +8583,7 @@ Royale.net={
       (function go(){ T.open('host',netS.code,function(e){
         if(e==='taken'&&!opts.code&&tries++<5){ netS.code=netCode(tries); return go(); }
         if(e){ netS.role=null; netS.msg=e==='taken'?'That code is in use. Try again.':netServiceMsg(e); netRender(); return; }
-        netBind(T); if(!netS.started){ netS.screen='lobby'; netShow(true); } netStartTimer(); netRender(); }); })(); });
+        netS.msg=''; netBind(T); if(!netS.started){ netS.screen='lobby'; netShow(true); } netStartTimer(); netRender(); }); })(); });
   },
   join:function(code,name,skin,opts){
     opts=opts||{}; if(netS.role) Royale.net.leave();
@@ -8591,7 +8591,7 @@ Royale.net={
     netMakeTransport(opts,function(err,T){ if(err){ netS.role=null; return; }
       T.open('guest',netS.code,function(e){
         if(e){ netS.role=null; netS.msg=e==='nolobby'?'No lobby with that code.':netServiceMsg(e); netRender(); return; }
-        netBind(T); netS.helloAt=netNow(); T.send('host',{t:'hello',ver:ROYALE_VER,name:netS.name,skin:netS.skin}); netStartTimer(); }); });
+        netS.msg=''; netBind(T); netS.helloAt=netNow(); T.send('host',{t:'hello',ver:ROYALE_VER,name:netS.name,skin:netS.skin}); netStartTimer(); netRender(); }); });
   },
   start:function(){
     if(netS.role!=='host'||netS.started) return false;
