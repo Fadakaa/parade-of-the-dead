@@ -2813,9 +2813,9 @@ function miniStrike(m){
   var hd=G.head, i, list=[];
   if(m.sub==='swing'){
     var R=m.r+hd.r+40, dx=hd.x-m.x, dy=hd.y-m.y;
-    if(Math.hypot(dx,dy)<R&&Math.abs(angNorm(Math.atan2(dy,dx)-m.face))<0.9){ hurt(10); knockHead(m,30); }
+    if(Math.hypot(dx,dy)<R&&Math.abs(angNorm(Math.atan2(dy,dx)-m.face))<0.9){ hurt(m.swingDmg||10); knockHead(m,30); } // swingDmg/swingKill/swingCd: a match's weaker Regional Manager (royaleTuneMini); unset in single-player
     for(i=0;i<G.segs.length&&i<300;i++){ var s=G.segs[i], sd=Math.hypot(s.x-m.x,s.y-m.y); if(sd<R+SEG_R&&Math.abs(angNorm(Math.atan2(s.y-m.y,s.x-m.x)-m.face))<0.95) list.push({i:i,d:sd}); }
-    killSegs(list,4,m); Snd.play('mace',m.x,m.y); G.shake=Math.max(G.shake,0.15); m.atkCd=1.6;
+    killSegs(list,m.swingKill||4,m); Snd.play('mace',m.x,m.y); G.shake=Math.max(G.shake,0.15); m.atkCd=m.swingCd||1.6;
   } else if(m.sub==='pound'){
     if(Math.hypot(hd.x-m.x,hd.y-m.y)<120+hd.r){ hurt(12); knockHead(m,50); }
     killSegs(nearSegs(m,60,300),2,m); flingSegs(m,UPPERCUT); Snd.play('boom',m.x,m.y); G.shake=Math.max(G.shake,0.35);
@@ -4006,6 +4006,7 @@ function citySpawnPoint(rmin,rmax,ang){
   if(!N) return null;
   for(var t=0;t<160;t++){ var n=N[Math.floor(Math.random()*N.length)], d=Math.hypot(n.x-hd.x,n.y-hd.y); if(d<rmin||d>rmax) continue;
     if(Math.abs(n.x-G.cam.x)<vw&&Math.abs(n.y-G.cam.y)<vh) continue;
+    if(G.match&&royaleOutRing(n.x,n.y,ROYALE_RING_PEOPLE)) continue; // Parade Royale: people arrive inside the ring, where the hordes are
     var x=n.x+(Math.random()-0.5)*40, y=n.y+(Math.random()-0.5)*40; if(navBlocked(F,x,y,HUMAN_R+4,true)) continue;
     var sc=ang===undefined?Math.random():Math.abs(angNorm(Math.atan2(n.y-hd.y,n.x-hd.x)-ang)); if(sc<bs){ bs=sc; best={x:x,y:y}; } }
   return best;
@@ -4033,7 +4034,7 @@ function updateCity(dt){
   if(G.humans.length<want&&G.citySpawnT<=0){ if(G.match) bindPlayer(randomLiving()||G.me); /* Parade Royale: the crowd fills in round a random living head */ if(rampRules()) rampCrowd(); else for(i=0;i<2&&G.humans.length<want;i++){ var p=citySpawnPoint(700,1500); if(p) citySpawn(p); } G.citySpawnT=0.5; if(G.match){ bindPlayer(G.me); hd=G.head; } }
   cityRestock(F,dt);
   // people left far behind are recycled so the fight stays where you are (and memory stays bounded)
-  for(i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(h.dead||h.nest) continue; var d=G.match?headDist(h.x,h.y):Math.hypot(h.x-hd.x,h.y-hd.y); if(d>2600){ h.farT=(h.farT||0)+dt; if(h.farT>6) h.dead=true; } else h.farT=0; }
+  for(i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(h.dead||h.nest) continue; var d=G.match?headDist(h.x,h.y):Math.hypot(h.x-hd.x,h.y-hd.y); if(d>2600||(G.match&&d>ROYALE_RING_GONE&&royaleOutRing(h.x,h.y,0))){ h.farT=(h.farT||0)+dt; if(h.farT>6) h.dead=true; } else h.farT=0; } // in a match people left outside the ring, out of everyone's sight, are recycled too: the crowd follows the hordes in
   // minis that haven't found you yet patrol toward where you are
   (G.minis||[]).forEach(function(mi){ if(mi.dead||!mi.city||mi.awake) return; mi.patrolT=(mi.patrolT||0)-dt; if(mi.patrolT<=0){ mi.patrolT=8; var n=cityNodeNear(F,hd.x+(Math.random()-0.5)*700,hd.y+(Math.random()-0.5)*700); if(n>=0){ mi.px=F.nav.nodes[n].x; mi.py=F.nav.nodes[n].y; } } });
   // a crew that's dead leaves no gun behind for anyone else to man
@@ -4213,13 +4214,18 @@ function removeDef(d,smashed){
 }
 /* Lasers and roadblocks take damage from the head biting them and from zombies crowding them. */
 function updateDefs(dt){
-  var F=G.F; if(!F.defs||!F.defs.length) return; var hd=G.head;
+  var F=G.F; if(!F.defs||!F.defs.length) return;
   F.defsT=(F.defsT||0)-dt; if(F.defsT>0) return; F.defsT=0.2;
-  for(var i=F.defs.length-1;i>=0;i--){ var d=F.defs[i]; if(d.kind!=='laser'&&d.kind!=='roadblock'&&d.kind!=='refuge'&&d.kind!=='barricade') continue; var hit=0, hitPart=null;
-    d.parts.forEach(function(o){ var cx=o.r!==undefined?o.x:o.x+o.w/2, cy=o.r!==undefined?o.y:o.y+o.h/2, rad=(o.r||Math.max(o.w,o.h)/2)+12;
-      if(Math.hypot(hd.x-cx,hd.y-cy)<rad+hd.r){ hit+=1; hitPart=o; } var z=0; for(var j=0;j<G.segs.length&&j<300;j++) if(Math.hypot(G.segs[j].x-cx,G.segs[j].y-cy)<rad+SEG_R) z++; if(z>=3){ hit+=0.5; hitPart=hitPart||o; } });
+  for(var i=F.defs.length-1;i>=0;i--){ var d=F.defs[i]; if(d.kind!=='laser'&&d.kind!=='roadblock'&&d.kind!=='refuge'&&d.kind!=='barricade') continue; defHit.n=0; defHit.part=null;
+    if(G.match) forPlayers(function(P){ if(P.alive) defHits(d); }); else defHits(d); // in a match every living head and line wears it down, not only the host's
+    var hit=defHit.n, hitPart=defHit.part;
     if(hit){ var px=hitPart?(hitPart.r!==undefined?hitPart.x:hitPart.x+hitPart.w/2):d.x, py=hitPart?(hitPart.r!==undefined?hitPart.y:hitPart.y+hitPart.h/2):d.y; d.hp-=hit*0.2; spawnParts(px+(Math.random()-0.5)*30,py+(Math.random()-0.5)*30,2,['#8a9099','#ffe066']); if(d.hp<=0){ if(d.kind==='refuge') smashRefuge(d.ref,hitPart); else removeDef(d,true); } } }
 }
+/* The bound player's head and line against one deployment's parts: adds to defHit (the head 1 a part, 3+ zombies 0.5). */
+var defHit={n:0,part:null};
+function defHits(d){ var hd=G.head;
+  d.parts.forEach(function(o){ var cx=o.r!==undefined?o.x:o.x+o.w/2, cy=o.r!==undefined?o.y:o.y+o.h/2, rad=(o.r||Math.max(o.w,o.h)/2)+12;
+    if(Math.hypot(hd.x-cx,hd.y-cy)<rad+hd.r){ defHit.n+=1; defHit.part=o; } var z=0; for(var j=0;j<G.segs.length&&j<300;j++) if(Math.hypot(G.segs[j].x-cx,G.segs[j].y-cy)<rad+SEG_R) z++; if(z>=3){ defHit.n+=0.5; defHit.part=defHit.part||o; } }); }
 function drawEngineers(){
   for(var i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(h.dead||!h.engineer) continue;
     ctx.fillStyle='#f2b134'; ctx.strokeStyle='#14121a'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(h.x,h.y-HUMAN_R-6,5,Math.PI,0); ctx.fill(); ctx.stroke(); /* hard hat */
@@ -7355,14 +7361,26 @@ function draw(){
   if(G.flash>0){ ctx.fillStyle='rgba(255,240,200,'+(G.flash*2.5)+')'; ctx.fillRect(0,0,W,H); }
   drawAlarmWash();
   drawFlyers(); if(state==='climb') drawClimb();
+  if(G.match){ var jh=joyHome(); if(jh&&!(joy&&joy.home)) drawJoyHome(jh.x,jh.y,jh.x,jh.y,false); } // the resting stick (ROYALE.md §14), under the match HUD
   if(G.match) Royale.draw('hud');
   if(state==='play') drawExitArrow();
   if(joy){
-    var jdx=joy.x-joy.ox, jdy=joy.y-joy.oy, l=Math.hypot(jdx,jdy), cl=Math.min(l,56);
+    var jdx=joy.x-joy.ox, jdy=joy.y-joy.oy, l=Math.hypot(jdx,jdy), cl=Math.min(l,JOY_R);
     var kx=l?joy.ox+jdx/l*cl:joy.ox, ky=l?joy.oy+jdy/l*cl:joy.oy;
-    ctx.strokeStyle='rgba(239,231,210,0.35)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(joy.ox,joy.oy,56,0,TAU); ctx.stroke();
-    ctx.fillStyle='rgba(239,231,210,0.45)'; ctx.beginPath(); ctx.arc(kx,ky,22,0,TAU); ctx.fill();
+    if(joy.home) drawJoyHome(joy.ox,joy.oy,kx,ky,true);
+    else {
+      ctx.strokeStyle='rgba(239,231,210,0.35)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(joy.ox,joy.oy,JOY_R,0,TAU); ctx.stroke();
+      ctx.fillStyle='rgba(239,231,210,0.45)'; ctx.beginPath(); ctx.arc(kx,ky,JOY_KNOB,0,TAU); ctx.fill();
+    }
   }
+}
+/* Parade Royale's anchored stick on a phone: an ink well, a bone ring and a bone knob with an ink rim; faint at rest,
+   firmer under a thumb. */
+function drawJoyHome(ox,oy,kx,ky,live){
+  ctx.fillStyle=live?'rgba(28,26,36,0.34)':'rgba(28,26,36,0.24)'; ctx.beginPath(); ctx.arc(ox,oy,JOY_R,0,TAU); ctx.fill();
+  ctx.strokeStyle=live?'rgba(239,231,210,0.55)':'rgba(239,231,210,0.38)'; ctx.lineWidth=3; ctx.stroke();
+  ctx.fillStyle=live?'rgba(239,231,210,0.6)':'rgba(239,231,210,0.34)'; ctx.beginPath(); ctx.arc(kx,ky,JOY_KNOB,0,TAU); ctx.fill();
+  ctx.strokeStyle=live?'rgba(28,26,36,0.6)':'rgba(28,26,36,0.4)'; ctx.lineWidth=2; ctx.stroke();
 }
 
 /* ---------- hud / overlays ---------- */
@@ -7783,7 +7801,18 @@ function noBrains(){ return G.mode==='rampage'||!!G.match; }
 /* The people's minute in a match: the 12-minute Rampage curve compressed into the match length (lane C may refine it). */
 function royalePeopleMin(){ var M=G.match; if(Royale.match&&Royale.match.peopleMin) return Royale.match.peopleMin(); return (M.clock/60)*12/(M.length/60); }
 /* A city mini boss for a match (ROYALE.md §4.3): spawned near a random living head, never only the host's. */
-function royaleMini(){ var P=randomLiving(); if(!P) return null; var was=G.cur; bindPlayer(P); var m=cityMini(true); bindPlayer(was); return m; }
+function royaleMini(){ var P=randomLiving(); if(!P) return null; var was=G.cur; bindPlayer(P); var m=cityMini(true); bindPlayer(was); royaleTuneMini(m); return m; }
+/* Owner, 20 Oct (playtest 1: "make the Regional Manager weaker"): in a match the Manager, ghost or not, has 65% of its HP
+   and a gentler, slower swing (6 HP, 2 zombies, every 2.4 s instead of 10 HP, 4 zombies, every 1.6 s). The Champ and the
+   Director are unchanged. Call once on a fresh mini. */
+var ROYALE_MANAGER={hp:0.65,dmg:6,kill:2,cd:2.4};
+/* The crowd follows the ring (coordinator, 20 Oct; bots review: at 2:00 only 17 of 95 people were inside it, so eleven
+   hordes starved in a shrinking circle). People spawn at least ROYALE_RING_PEOPLE inside the edge; anyone outside it and
+   ROYALE_RING_GONE from every head for 6 s is recycled, out of sight, the way the city recycles people left far behind. */
+var ROYALE_RING_PEOPLE=120, ROYALE_RING_GONE=800;
+function royaleOutRing(x,y,margin){ var R=G.match&&G.match.ring; if(!R) return false; var r=R.r-(margin||0); if(r<=0) return true; var dx=x-R.x, dy=y-R.y; return dx*dx+dy*dy>r*r; }
+function royaleTuneMini(m){ if(!m||m.kind!=='manager'||m.tuned) return m; m.tuned=true; var R=ROYALE_MANAGER;
+  m.hp=m.max=Math.max(1,Math.round(m.max*R.hp)); m.swingDmg=R.dmg; m.swingKill=R.kill; m.swingCd=R.cd; return m; }
 function royaleMinute(){ var M=G.match, rm=Math.floor(rampMin()); if(M.min===undefined) M.min=0; if(rm>M.min){ M.min=rm; var P=randomLiving(); if(P){ var was=G.cur; bindPlayer(P); rampMinute(); bindPlayer(was); } } }
 /* A bound player dies in a match: its line becomes strays for anyone, the head stays where it fell for the camera. */
 function royaleDie(){ var P=G.cur, cause=G.deathCause||'people', by=G.deathBy||0; G.deathCause=null; G.deathBy=0; P.stats.hordeAtDeath=G.segs.length; while(G.segs.length) makeStray(G.segs.pop()); G.hp=0; Royale.onDeath(P,cause,by); }
@@ -7855,7 +7884,7 @@ Royale.mount=function(id,html,css){
 };
 
 /* Hooks (ROYALE.md §6.2): the existing sections call these; each lane defines what it needs on its own object. */
-var ROYALE_LANES=['match','fights','ghosts','bots','tricks','net','ui']; // Phase 2 adds bots and tricks (ROYALE.md §11, §12)
+var ROYALE_LANES=['match','fights','ghosts','bots','cars','tricks','net','ui']; // Phase 2 adds bots, cars and tricks (ROYALE.md §11, §13, §12)
 function royaleEach(fn,a,b,c,d){ for(var i=0;i<ROYALE_LANES.length;i++){ var L=Royale[ROYALE_LANES[i]]; if(L&&typeof L[fn]==='function') L[fn](a,b,c,d); } }
 Royale.update=function(dt){ royaleEach('update',dt); };
 Royale.draw=function(layer){ royaleEach('draw',layer); };
@@ -7957,7 +7986,7 @@ var netS=netFresh();
 function netFresh(){
   return {role:null,T:null,code:'',me:0,name:'',skin:'zombie',lobby:[],bots:null,peers:{},clock:0,started:false,screen:'menu',msg:'',lastErr:null,ice:null,relay:null,probing:false,autoT:NET_AUTO,timer:null,lastMs:0,
     snapAcc:0,inAcc:0,inN:0,pend:[],tick:null,ended:false,recent:[],recentF:-1,helloAt:-1,rtt:0.3,joinT:0,quietT:0,leaving:false,waiting:false,
-    snapT:0,snapDt:1/NET_HZ,lastSnapAt:-1,got:false,hmap:{},mmap:{},gmap:{},hist:[],hi:0,lag:0.3,corrX:0,corrY:0,corrH:0,hostX:null,hostY:null,sentN:[],sentI:0,ack:0,
+    snapT:0,got:false,q:[],hT:-1,hN:0,hClock:0,hPhase:'',tA:0,tB:0,rT:0,vT:0,jit:0,D:1/NET_HZ,rate:1,rA:0,rB:0,arr:{n:0,at:-1,first:0,newest:0,lastT:0,miss:0},gone:{},playAt:-1,wallP:0,wallOn:false,wallSet:false,rSkip:false,awayArr:false,pend:null,eatQ:[],eatPend:{},vanished:[],hmap:{},mmap:{},gmap:{},hist:[],hi:0,lag:0.3,corrX:0,corrY:0,corrH:0,hostX:null,hostY:null,sentN:[],sentI:0,ack:0,
     segPool:[],strayPool:[],projPool:[],foamPool:[],tyCache:{},sizes:{},maxBytes:0,uidSeq:0,midSeq:0,furM:null,furBase:null};
 }
 function netOwn(o,k){ return Object.prototype.hasOwnProperty.call(o,k); }
@@ -8034,10 +8063,11 @@ function netFakeHub(channel){
 /* A fake endpoint: lag (ms, plus jitter) and loss applied on the receiving side, on that device's own clock. Loss hits only
    the messages the next one replaces (snapshots and input); the rest stand for PeerJS's reliable channel. */
 function netFake(hub,opts){
-  opts=opts||{}; var T=netTransport('fake'), lag=(opts.lag||0)/1000, jit=(opts.jitter||0)/1000, loss=opts.loss||0, rng=netLcg(opts.seed||7), me=null, hostId=null, q=[], last={}, guests={};
+  opts=opts||{}; var T=netTransport('fake'), lag=(opts.lag||0)/1000, jit=(opts.jitter||0)/1000, loss=opts.loss||0, hol=opts.hol||null, rng=netLcg(opts.seed||7), me=null, hostId=null, q=[], last={}, guests={};
   function recv(from,kind,str){
     if(kind==='msg'&&loss>0&&(str.charAt(0)==='~'||str.indexOf('{"t":"i"')===0)&&rng()<loss) return;
-    var at=netNow()+lag+jit*rng(), lk='#'+from; if(netOwn(last,lk)&&at<last[lk]) at=last[lk]; last[lk]=at;
+    var at=netNow()+lag+jit*rng(), lk='#'+from; if(hol&&kind==='msg'&&rng()<hol.p) at+=hol.rtx/1000; /* lost and sent again a round trip later; the order holds what follows */
+    if(netOwn(last,lk)&&at<last[lk]) at=last[lk]; last[lk]=at;
     q.push({at:at,from:from,kind:kind,str:str});
   }
   T.lag=lag; T.loss=loss;
@@ -8128,8 +8158,8 @@ function netBind(T){
 function netLobbyMsg(id,again){ var ps=[], i, L=netS.lobby; for(i=0;i<L.length;i++) ps.push({id:L[i].id,name:L[i].name,colour:L[i].colour,skin:L[i].skin}); var m={t:'lobby',code:netS.code,me:id,players:ps}; if(again) m.again=true; return m; }
 function netLobbySend(again){ netEachPeer(function(k,q){ if(q.hello&&q.live) netS.T.send(q.peer,netLobbyMsg(q.id,again)); }); netRender(); }
 function netEachPeer(fn){ var k; for(k in netS.peers) if(netOwn(netS.peers,k)) fn(k,netS.peers[k]); }
-function netFreeColour(){ var used={}, i; for(i=0;i<netS.lobby.length;i++) used[netS.lobby[i].colour]=1; for(i=0;i<ROYALE_COLOURS.length;i++) if(!used[i]) return i; return netS.lobby.length%ROYALE_COLOURS.length; }
-function netNextId(){ var m=0, i, L=netS.lobby; for(i=0;i<L.length;i++) m=Math.max(m,L[i].id); if(G&&G.players) for(i=0;i<G.players.length;i++) m=Math.max(m,G.players[i].id); return m+1; }
+function netFreeColour(){ var used={}, i; for(i=0;i<netS.lobby.length;i++) used[netS.lobby[i].colour]=1; if(G&&G.match&&G.players) for(i=0;i<G.players.length;i++) used[G.players[i].colour]=1; for(i=0;i<ROYALE_COLOURS.length;i++) if(!used[i]) return i; return netS.lobby.length%ROYALE_COLOURS.length; } // a live match's bots hold colours too (they are never in the lobby)
+function netNextId(){ var m=0, i, L=netS.lobby; for(i=0;i<L.length;i++) m=Math.max(m,L[i].id); if(G&&G.match&&G.players) for(i=0;i<G.players.length;i++) m=Math.max(m,G.players[i].id); return m+1; } // a finished match's players do not count: ids stay 1..12 over rematches
 function netSpecs(){ var ps=[], i, L=netS.lobby; for(i=0;i<L.length;i++) ps.push({id:L[i].id,name:L[i].name,colour:L[i].colour,skin:L[i].skin}); return ps; }
 /* The host's player list at START: the lobby, then the bots lane's plan for it (ROYALE.md §11), fixed for the match so a late joiner gets the same list. */
 function netBotsPlan(){ if(!netS.bots) netS.bots=(Royale.bots&&Royale.bots.plan)?(Royale.bots.plan(netSpecs())||[]):[]; return netS.bots; }
@@ -8154,9 +8184,9 @@ function netHostMsg(peer,m){
       q.id=netNextId(); netS.lobby.push({id:q.id,name:name,colour:netFreeColour(),skin:skin,peer:peer});
       if(netS.started) netS.T.send(peer,netLobbyMsg(q.id)); else netLobbySend(); return; }
     // mid-match: take back your own player (same name, nobody connected to it), else join as the dead (a ghost later, §7)
-    var P=null, i, k; for(i=0;i<G.players.length;i++){ var Q=G.players[i]; if(Q!==G.me&&Q.name===name&&!netLivePeerOf(Q)){ P=Q; break; } }
+    var P=null, i, k; for(i=0;i<G.players.length;i++){ var Q=G.players[i]; if(Q!==G.me&&!Q.bot&&Q.name===name&&!netLivePeerOf(Q)){ P=Q; break; } }
     if(P){ netEachPeer(function(k2,o){ if(o!==q&&o.P===P) delete netS.peers[k2]; }); Royale.onRejoin(P); } // the old record goes: only the current one can time out
-    else { var humans=0; for(i=0;i<G.players.length;i++) if(!G.players[i].bot) humans++; if(humans>=ROYALE_MAX){ netBye(peer,'full'); return; }
+    else { if(G.players.length>=ROYALE_MAX){ netBye(peer,'full'); return; } // bots count: humans + bots never pass ROYALE_MAX
       P=netNewPlayer(netNextId(),{name:name,colour:netFreeColour(),skin:skin,remote:true}); P.alive=false; P.diedAt=G.match.clock; P.head.x=3300; P.head.y=3300; G.players.push(P); }
     q.P=P; q.id=P.id;
     for(k=0;k<netS.lobby.length;k++) if(netS.lobby[k].id===P.id) break;
@@ -8197,7 +8227,7 @@ function netGuestMsg(m){
     else if(G.match&&G.match.phase!=='ended'&&G.players) netAdopt();
     netRender(); return; }
   if(m.t==='start'){ if(netS.started) return; netBegin(m.seed,m.length,m.players||[],false); return; }
-  if(m.t==='s'){ if(netS.started&&G.match&&G.match.phase!=='ended') netApply(m); return; }
+  if(m.t==='s'){ if(netS.started&&G.match&&G.match.phase!=='ended') netArrive(m); return; }
   if(m.t==='e'){ if(netS.started&&G.match) netEvents(m.ev||[],true); return; }
   if(m.t==='bye') netLost(typeof m.why==='string'?m.why:'host');
 }
@@ -8217,7 +8247,7 @@ function netLost(why){
 /* Both sides: build the match from the start message. Every device runs the same city from the seed (core). */
 function netBegin(seed,length,players,host){
   var ps=[], i; for(i=0;i<players.length;i++) ps.push({id:players[i].id|0,name:netName(players[i].name),colour:players[i].colour|0,skin:netSkinOk(players[i].skin),remote:players[i].id!==netS.me,bot:!!players[i].bot});
-  netS.started=true; netS.got=false; netS.ended=false; netS.hmap={}; netS.mmap={}; netS.gmap={}; netS.hist=[]; netS.hi=0; netS.corrX=netS.corrY=netS.corrH=0; netS.hostX=null; netS.ack=0; netS.pend=[];
+  netS.started=true; netS.got=false; netS.ended=false; netS.q=[]; netS.hT=-1; netS.tA=netS.tB=netS.rT=netS.vT=0; netS.jit=0; netS.D=1/NET_HZ; netS.rate=1; netS.rA=netS.rB=0; netS.arr={n:0,at:-1,first:0,newest:0,lastT:0,miss:0}; netS.gone={}; netS.playAt=-1; netS.rSkip=false; netS.awayArr=false; netS.pend=null; netS.eatQ=[]; netS.eatPend={}; netS.hmap={}; netS.mmap={}; netS.gmap={}; netS.hist=[]; netS.hi=0; netS.corrX=netS.corrY=netS.corrH=0; netS.hostX=null; netS.ack=0; netS.pend=[];
   netS.ringSeen=false; netS.furM=null; netStopTimer(); netShow(false); netWait(false);
   startMatch({host:host,seed:seed>>>0,length:length||ROYALE_LEN,code:netS.code,players:ps,me:netS.me});
   if(!host){ G.humans=[]; G.strays=[]; G.proj=[]; G.minis=[]; for(i=0;i<G.players.length;i++){ var sg=netF(G.players[i],'segs'); sg.length=0; } }
@@ -8287,7 +8317,7 @@ function netCentre(P){ var gm=P.ghost&&P.ghost.m; if(gm&&!gm.dead) return gm; re
    1,200 px of its head; ack is the last input of this guest's the host has applied. */
 function netSnap(Pg,tick,ack){
   var M=G.match, t=tick||netS.tick||netTick(), c=netCentre(Pg), cx=c.x, cy=c.y, R2=NET_CULL*NET_CULL, i, k, ring=M.ring, dx, dy, F=G.F;
-  var s={t:'s',n:M.n,ack:ack>0?ack:0,clock:netR2(M.clock),phase:M.phase,ring:{x:Math.round(ring.x),y:Math.round(ring.y),r:Math.round(ring.r),tx:Math.round(ring.tx),ty:Math.round(ring.ty),tr:Math.round(ring.tr),stepT:netR2(ring.stepT||0),step:ring.step|0},
+  var s={t:'s',n:M.n,ack:ack>0?ack:0,clock:Math.round(M.clock*1000)/1000,phase:M.phase,ring:{x:Math.round(ring.x),y:Math.round(ring.y),r:Math.round(ring.r),tx:Math.round(ring.tx),ty:Math.round(ring.ty),tr:Math.round(ring.tr),stepT:netR2(ring.stepT||0),step:ring.step|0},
     crown:M.crown|0,fur:[],gates:t.gates,foam:[],players:[],strays:[],humans:[],proj:[],minis:[],ev:netS.pend,x:netLaneSnap(Pg)};
   for(i=0;i<G.players.length;i++){ var P=G.players[i], hd=netF(P,'head'), sg=netF(P,'segs'), st=netF(P,'st'), a=[], gm=P.ghost&&P.ghost.m;
     for(k=0;k<sg.length;k++){ var z=sg[k]; dx=z.x-cx; dy=z.y-cy; if(dx*dx+dy*dy<R2) a.push(Math.round(z.x),Math.round(z.y),netAng(z.tang||0),NET_PI[z.id]|0); }
@@ -8309,7 +8339,8 @@ function netGuestUpdate(dt){
   netS.clock+=dt; G.t+=dt; G.frameN=(G.frameN||0)+1; netS.quietT+=dt;
   if(netS.T) netS.T.pump();
   if(G.match!==M) return; // the host left: quit() has put the title up
-  netS.snapT+=dt; // after the pump: a snapshot applied this frame still moves things this frame (at 20 fps one lands every frame)
+  netS.snapT+=dt;
+  netPlay(dt); // the snapshots whose turn has come on the guest's own timeline
   if(netS.quietT>NET_GONE&&netS.started){ netLost('host'); return; }
   netSendInput(dt);
   if(netS.got){ netLerp(dt); netPredict(dt); }
@@ -8331,21 +8362,205 @@ function netSendInput(dt){
   var S=netS.sentN, e; if(S.length<64){ e={n:0,t:0}; S.push(e); netS.sentI=S.length-1; } else { netS.sentI=(netS.sentI+1)%64; e=S[netS.sentI]; } e.n=n; e.t=netNow();
 }
 function netSentAt(n){ var S=netS.sentN, i; for(i=0;i<S.length;i++) if(S[i].n===n) return S[i].t; return -1; }
-/* What a guest's draw code needs, rebuilt from one snapshot. Each thing keeps where it is drawn now (x0) and where the host
-   last put it (x1); netLerp moves it between them over one snapshot interval. */
-function netApply(s){
-  var M=G.match, now=netNow(), i;
-  if(netS.lastSnapAt>=0){ var gap=now-netS.lastSnapAt; if(gap>0.01&&gap<0.3) netS.snapDt+=(gap-netS.snapDt)*0.1; }
-  netS.lastSnapAt=now; netS.snapT=0; netS.got=true; if(s.ack>0) netS.ack=s.ack;
-  if(s.phase&&M.phase!=='ended') M.phase=s.phase;
+/* The guest's timeline (lane L, 20 Oct). A snapshot is stamped with the host's simulated time (the match clock in play,
+   else its sequence number at 20 Hz), queued on arrival and applied when the guest's render clock rT reaches the snapshot
+   before it, so everything is drawn between two host positions whatever the network does to the arrival times. Both
+   clocks run on the page's real time (performance.now, netWall), so a hidden page or a long frame is seen for what it is.
+   - vT, the newest host time now, runs at the host's own rate: a slow host (its frames past 50 ms are capped, so it
+     simulates slower than real time) is measured from the arrivals over a few seconds (host time over real time). Snapshots
+     that arrive ahead of vT move it up; a host whose time falls more than 0.1 s behind (a stall, a slowdown) resets it; a
+     little late pulls it back a tenth.
+   - rT runs NET_D behind vT: one snapshot interval plus the worst lateness of the last few seconds. Lateness is how far
+     behind vT a snapshot arrives; a frame with several arrivals is a network hold let go (PeerJS's reliable channel holds
+     everything behind a lost packet until it is resent): its first came that late. A host stall sends one. A snapshot
+     that never came counts as one interval. The peak decays over NET_JIT_T s. A frame that comes more than NET_GAP_T s
+     after the last (the page was hidden, the phone stuck) measures nothing.
+   - rT runs at vT's rate, warped towards its place; past it, it slows to a stop rather than run on, and it never runs more
+     than half an interval past the newest snapshot. Behind, it catches up at up to twice the speed; a second behind (a
+     page that was away), it jumps.
+   What the guest must feel at once does not wait for the queue: its own health and hurt flash, its stacks, its own
+   events, the phase (forwards only) and own-head reconciliation against the ack all happen on arrival. A rival's eat
+   waits for its snapshot (the person goes when the rival is drawn there). A snapshot that is skipped (overtaken while
+   waiting, or past the queue's NET_Q_MAX) still hands its lane state to unpack and plays its waiting events, in order. */
+var NET_D_MAX=0.3, NET_JIT_T=6, NET_GAP_T=0.25, NET_Q_MAX=12, NET_LEAN_T=0.12, NET_BAND=5, NET_GAP=2, NET_MATCH_D=60, NET_TAKE_D=30, NET_VMAX=420;
+var NET_PHASES={lobby:0,drop:1,play:2,ended:3};
+function netPhaseOn(ph){ var M=G.match; if(typeof ph!=='string'||!netOwn(NET_PHASES,ph)||M.phase==='ended') return; if(NET_PHASES[ph]>=(NET_PHASES[M.phase]|0)) M.phase=ph; } // never backwards: an older snapshot in the queue cannot undo the 'phase' event
+/* Real seconds: performance.now once it is seen to move (a page), else the net clock (the headless sims). */
+function netWall(){ var p=(typeof performance!=='undefined'&&performance.now)?+performance.now()||0:0;
+  if(!netS.wallSet){ netS.wallSet=true; netS.wallOn=p>0; } // decided once, at the first call, never mixed: a page has a real clock; a headless stub standing at 0 runs on the net clock
+  return netS.wallOn?p/1000:netS.clock; }
+function netLanesUnpack(s){ if(s.x&&typeof s.x==='object'){ var kx; for(kx in s.x) if(netOwn(s.x,kx)){ var Lu=netLane(kx); if(Lu&&Lu.unpack) Lu.unpack(s.x[kx]); } } }
+/* A queued snapshot that will never be applied: its lane state and its waiting events still go through, in order. */
+function netSkip(e){ netLanesUnpack(e.s); netEatLater(e); }
+/* A rival's eat waits for the render clock to reach its snapshot: the person stays where it stood until the rival is drawn
+   there (netApplyHumans keeps anyone in netS.eatPend), then goes with the rival's chomp. */
+function netEatLater(e){ for(var i=0;i<e.ev.length;i++){ var ev=e.ev[i]; netS.eatPend['u'+ev.uid]=1; netS.eatQ.push({T:e.T,ev:ev}); } }
+function netEatDue(){ var Q=netS.eatQ; while(Q.length&&netS.rT>=Q[0].T){ var ev=Q.shift().ev; delete netS.eatPend['u'+ev.uid]; netEvents([ev],false); } }
+function netArrive(s){
+  var dn=netS.hT<0?1:(s.n|0)-netS.hN, T, i, sp=null, A=netS.arr, me=G.me?G.me.id:0, now=[], later=[];
+  if(netS.hT>=0&&dn<=0) return; // a stale or repeated snapshot never steps back
+  var dc=(+s.clock||0)-netS.hClock;
+  T=netS.hT<0?0:netS.hT+(s.phase==='play'&&netS.hPhase==='play'&&dc>0&&dc<dn*0.25?dc:dn/NET_HZ); // the clock is the host's simulated time (its dt cap included); between phases the sequence stands in
+  netS.hT=T; netS.hN=s.n|0; netS.hClock=+s.clock||0; netS.hPhase=s.phase;
+  netS.snapT=0; if(s.ack>0) netS.ack=s.ack;
+  if(!A.n){ A.first=T; A.miss=0; } A.n++; A.newest=T; A.miss+=dn-1; // the frame's arrivals, read by netPlay
+  for(i=0;i<(s.ev||[]).length;i++){ var ev=s.ev[i]; (ev&&ev.k==='eat'&&ev.id!==me?later:now).push(ev); }
+  netS.q.push({s:s,T:T,ev:later});
+  while(netS.q.length>NET_Q_MAX) netSkip(netS.q.shift()); // a hidden page: only the newest are kept
+  if(!netS.got){ netS.vT=T; netS.rT=T-netS.D; netS.jit=0; A.n=0; A.at=netWall(); A.lastT=T; netS.playAt=A.at; netPlay(0); }
+  netPhaseOn(s.phase);
+  for(i=0;i<s.players.length;i++) if(G.me&&s.players[i].id===G.me.id) sp=s.players[i];
+  if(sp){ var was=netF(G.me,"hp"); netSet(G.me,"hp",sp.hp); if(sp.hp<was-0.5) G.hurt=Math.max(G.hurt||0,0.25); if(sp.maxHp&&G.st) G.st.maxHp=sp.maxHp; netStacksOf(sp.segs,sp.n|0); if(netS.got) netReconcile(sp.x,sp.y,sp.h); }
+  if(now.length) netEvents(now,false);
+}
+/* Move the render clock on and apply every snapshot whose interval has begun. */
+function netPlay(dt){
+  if(!netS.q.length&&!netS.got) return;
+  var A=netS.arr, w=netWall(); if(netS.playAt<0) netS.playAt=w;
+  var wdt=dt?Math.max(0,w-netS.playAt):0, away=wdt>NET_GAP_T; if(dt) netS.playAt=w; // a call with no time (the first snapshot, the first frame after a pause or an ad) moves nothing and keeps the real gap for the next frame
+  if(away) netS.awayArr=true; // the page was away (iOS freezes a hidden page): the arrivals that follow are its backlog, whenever they land, not lateness
+  netS.vT+=wdt*netS.rate;
+  var P=netS.pend; if(P&&w-P.at>NET_GAP_T) netS.pend=P=null; // a lone late arrival that nothing followed in a hurry: the host stalled
+  if(A.n){ var gap=w-A.at, dT=A.newest-A.lastT, e=A.newest-netS.vT, late=0, vb=netS.vT, back=netS.awayArr;
+    if(!netS.wallOn) away=away||dT>gap+NET_GAP_T; // the net clock stands still while a page is hidden: the host's time ran on much further than ours
+    netS.awayArr=false; var quiet=away||back;
+    var use=!quiet&&gap>0&&gap<=NET_GAP_T&&dT>0, after=netS.rSkip; netS.rSkip=!use; // a hold let go over two frames: the second's host time belongs to the first's gap
+    if(use&&!after){ netS.rA=netS.rA*0.98+dT; netS.rB=netS.rB*0.98+gap; if(netS.rB>1) netS.rate=Math.max(0.25,Math.min(netS.wallOn?1:1.2,netS.rA/netS.rB)); } // over a few seconds, bursts and all; a host never simulates faster than real time
+    if(e>0){ netS.vT=A.newest; late=A.newest-A.first; } // ahead
+    else if(e<-0.1){ if(!quiet&&!P) netS.pend={at:w,vb:vb,first:A.first}; netS.vT=A.newest; } // well behind: the host stalled or slowed, or a hold's first came on its own; what follows decides
+    else { netS.vT+=e*0.1; late=-e; }
+    if(A.n>1) late=Math.max(late,vb-A.first); // several at once: a hold let go, and the first of them waited that long
+    if(P&&A.newest-P.first>(w-P.at)*netS.rate+0.1){ late=Math.max(late,P.vb-P.first); netS.pend=null; } // since that lone one, host time ran ahead of ours: the rest of a hold, let go a frame later
+    late+=A.miss/NET_HZ;
+    if(!quiet&&late>netS.jit) netS.jit=Math.min(NET_D_MAX,late);
+    A.at=w; A.lastT=A.newest; A.n=0; }
+  var sd=Math.min(wdt,0.1);
+  netS.jit*=Math.exp(-wdt/NET_JIT_T);
+  var Dt=Math.min(NET_D_MAX,1/NET_HZ+netS.jit+0.006); netS.D+=(Dt-netS.D)*(Dt>netS.D?Math.min(1,sd*4):Math.min(1,sd*0.5));
+  var want=netS.vT-netS.D, err=want-netS.rT;
+  if(err>1) netS.rT=want; else netS.rT+=wdt*netS.rate*Math.max(0,Math.min(err>0.1?2:1.3,1+3*err)); // a time warp: down to a stop when ahead, up to twice as fast to catch up after a long hold; only a page that was away jumps
+  if(netS.rT>netS.hT+0.5/NET_HZ) netS.rT=netS.hT+0.5/NET_HZ; // never far past the newest snapshot
+  while(netS.q.length&&(!netS.got||netS.rT>=netS.tB)){
+    if(netS.got&&netS.q.length>1&&netS.rT>=netS.q[1].T){ netSkip(netS.q.shift()); continue; } // overtaken while waiting: the next one starts from where things stand
+    var q=netS.q.shift(); netEatLater(q); netApply(q.s,q.T); }
+  netEatDue();
+}
+/* What a guest's draw code needs, rebuilt from one snapshot. Each thing keeps where the host had it in the snapshot before
+   (x0, at tA) and where it has it now (x1, at tB); netLerp draws it between them at the render clock. */
+function netApply(s,T){
+  var M=G.match, i, first=!netS.got;
+  netS.tA=first?T:netS.tB; netS.tB=T; netS.got=true;
+  var dtS=netS.tB-netS.tA;
+  netPhaseOn(s.phase);
   M.clock=+s.clock||0; M.crown=s.crown|0; M.n=s.n;
-  var rg=M.ring, sr=s.ring||{}; rg.nx0=rg.x; rg.ny0=rg.y; rg.nr0=rg.r; rg.nx1=sr.x; rg.ny1=sr.y; rg.nr1=sr.r; rg.tx=sr.tx; rg.ty=sr.ty; rg.tr=sr.tr; rg.stepT=sr.stepT; if(sr.step!==undefined) rg.step=sr.step;
-  if(!netS.ringSeen){ rg.nx0=sr.x; rg.ny0=sr.y; rg.nr0=sr.r; netS.ringSeen=true; }
+  var rg=M.ring, sr=s.ring||{}; rg.nx0=rg.nx1; rg.ny0=rg.ny1; rg.nr0=rg.nr1; rg.nx1=sr.x; rg.ny1=sr.y; rg.nr1=sr.r; rg.tx=sr.tx; rg.ty=sr.ty; rg.tr=sr.tr; rg.stepT=sr.stepT; if(sr.step!==undefined) rg.step=sr.step;
+  if(!netS.ringSeen||rg.nx0===undefined){ rg.nx0=sr.x; rg.ny0=sr.y; rg.nr0=sr.r; netS.ringSeen=true; }
   netApplyWorld(s);
-  for(i=0;i<s.players.length;i++) netApplyPlayer(s.players[i]);
-  netApplyStrays(s.strays); netApplyHumans(s.humans); netApplyProj(s.proj); netApplyMinis(s.minis,s.players);
-  if(s.x&&typeof s.x==='object'){ var kx; for(kx in s.x) if(netOwn(s.x,kx)){ var Lu=netLane(kx); if(Lu&&Lu.unpack) Lu.unpack(s.x[kx]); } }
-  if(s.ev&&s.ev.length) netEvents(s.ev,false);
+  // strays are matched first (not yet committed): a zombie that rejoined a line leaves a stray behind that its new
+  // record starts from; the zombies a cut or a bite left behind are the records new strays start from
+  var sOld=netS.strayOld||(netS.strayOld=[]), sAl=netS.strayAl||(netS.strayAl=[]), sa=s.strays||[], stamp=(netS.stamp=(netS.stamp||0)+1);
+  sOld.length=0; for(i=0;i<G.strays.length;i++) sOld.push(G.strays[i]);
+  netAlign(sOld,sa,6,dtS,sAl);
+  for(i=0;i<sAl.length;i++) if(sAl[i]>=0) sOld[sAl[i]].nUsed=stamp;
+  netS.sStamp=stamp; netS.vanished.length=0;
+  for(i=0;i<s.players.length;i++) netPrepPlayer(s.players[i],i,dtS,stamp);
+  for(i=0;i<s.players.length;i++) netCommitPlayer(s.players[i],i,dtS,stamp);
+  netApplyStrays(sa,sOld,sAl,dtS);
+  for(i=0;i<netS.vanished.length;i++) netS.segPool.push(netS.vanished[i]);
+  netS.vanished.length=0;
+  netApplyHumans(s.humans); netApplyProj(s.proj); netApplyMinis(s.minis,s.players);
+  netLanesUnpack(s);
+}
+/* Which old record each new entry is (out[k] = its index in old, or -1 for a new one). A snapshot carries no ids, and a
+   line moves along itself by most of a zombie's spacing between two snapshots, so position alone aliases: zombie k lands
+   nearer where k-1 was than where it was itself. So the order is kept (an edit distance in a band of NET_BAND places,
+   which follows the cuts, drops and growth at the tail and the odd zombie lost mid-line) and each old record is compared
+   at where it was heading (its last host position plus its last velocity), never at where it is drawn (G.me's front
+   zombies lean towards the predicted head). A match costs its distance over 12 px, a dropped or a new entry
+   NET_GAP; a different profession or more than NET_MATCH_D px never match. Typed arrays, grown once: nothing allocates. */
+var netDp=new Float64Array(0), netBp=new Int8Array(0);
+function netAlign(old,a,st,dtS,out){
+  var m=old.length, c=Math.floor(a.length/st), B=NET_BAND, W=2*B+1, j, k, x, best, bp, v, o, I=Infinity, G2=NET_GAP, MD=NET_MATCH_D*NET_MATCH_D;
+  out.length=c; for(k=0;k<c;k++) out[k]=-1;
+  if(!m||!c) return out;
+  var size=(m+1)*W; if(netDp.length<size){ netDp=new Float64Array(size*2); netBp=new Int8Array(size*2); }
+  var dp=netDp, bk=netBp, end=I, ej=0, ek=0;
+  for(j=0;j<=m;j++){ var k0=Math.max(0,j-B), k1=Math.min(c,j+B);
+    for(k=k0;k<=k1;k++){ x=j*W+k-j+B;
+      if(!j&&!k){ dp[x]=0; bk[x]=0; }
+      else { best=I; bp=0;
+        if(j&&k){ o=old[j-1]; if(o.id===(NET_PROF[a[(k-1)*st+3]]||'intern')){ var px=o.nx1+(o.vx||0)*dtS-a[(k-1)*st], py=o.ny1+(o.vy||0)*dtS-a[(k-1)*st+1], d2=px*px+py*py;
+          if(d2<MD){ v=dp[(j-1)*W+k-j+B]+Math.sqrt(d2)/12; if(v<best){ best=v; bp=1; } } } }
+        if(j&&k-j+1<=B){ v=dp[(j-1)*W+k-j+1+B]+G2; if(v<best){ best=v; bp=2; } } // old j-1 dropped
+        if(k&&k-1-j>=-B){ v=dp[j*W+k-1-j+B]+G2; if(v<best){ best=v; bp=3; } } // new k-1 is new
+        dp[x]=best; bk[x]=bp; }
+      v=dp[x]+(m-j)*G2+(c-k)*G2; if(v<end){ end=v; ej=j; ek=k; } } }
+  j=ej; k=ek;
+  while(j>0||k>0){ bp=bk[j*W+k-j+B]; if(bp===1){ out[k-1]=j-1; j--; k--; } else if(bp===2) j--; else if(bp===3) k--; else break; }
+  return out;
+}
+/* Start a record that is new to this guest from where the zombie really was a moment ago: the stray it was (a rejoin, a
+   bite's spoils) or, for a new zombie at the end of a line, the zombie before it (eat() puts the newcomer on the tail). */
+function netTakeFrom(list,pid,x,y,stamp){ var best=-1, bd=NET_TAKE_D*NET_TAKE_D, i, o, d;
+  for(i=0;i<list.length;i++){ o=list[i]; if(o.nUsed===stamp||o.nTaken===stamp||o.id!==pid) continue; d=(o.nx1-x)*(o.nx1-x)+(o.ny1-y)*(o.ny1-y); if(d<bd){ bd=d; best=i; } }
+  if(best<0) return null; o=list[best]; o.nTaken=stamp; return o; }
+/* A player from one snapshot, first pass: health, the head, and which of its drawn zombies each visible one is. Nothing
+   in its line is replaced yet, so the second pass can start a newcomer from a zombie that left any line this snapshot
+   (a bite moves zombies from the victim's line to the biter's within one host frame). */
+function netPrepPlayer(sp,i,dtS,stamp){
+  var P=playerById(sp.id), me=P===G.me, k;
+  if(!P){ P=netNewPlayer(sp.id,{remote:true}); G.players.push(P); }
+  var hd=netF(P,'head'), was=netF(P,'hp');
+  if(P.alive&&!sp.alive){ P.alive=false; if(P.diedAt===null||P.diedAt===undefined) P.diedAt=G.match.clock; } // a late joiner learns who is already dead (a live death comes first as an 'e')
+  if(!me) netSet(P,'hp',sp.hp); // G.me's health is set on arrival
+  hd.r=sp.r; P.netN=sp.n;
+  // the host's head: interpolated for everyone; for G.me it is the reference the prediction leans its front zombies to
+  if(hd.nx1===undefined||Math.hypot(sp.x-hd.nx1,sp.y-hd.ny1)>NET_SNAP_D*2){ hd.nx0=hd.nx1=sp.x; hd.ny0=hd.ny1=sp.y; hd.nh0=hd.nh1=sp.h; if(!me||!netPredicting()){ hd.x=sp.x; hd.y=sp.y; hd.h=sp.h; } }
+  else { hd.nx0=hd.nx1; hd.ny0=hd.ny1; hd.nh0=hd.nh1; hd.nx1=sp.x; hd.ny1=sp.y; hd.nh1=sp.h; }
+  if(me&&netS.hostX===null){ netS.hostX=sp.x; netS.hostY=sp.y; }
+  var W=netS.work||(netS.work=[]), w=W[i]||(W[i]={vis:[],far:[],al:[]}), sg=netF(P,'segs');
+  w.P=P; w.vis.length=0; w.far.length=0; for(k=0;k<sg.length;k++) (sg[k].far?w.far:w.vis).push(sg[k]);
+  netAlign(w.vis,sp.segs,4,dtS,w.al);
+  for(k=0;k<w.al.length;k++) if(w.al[k]>=0) w.vis[w.al[k]].nUsed=stamp;
+  for(k=0;k<w.vis.length;k++) if(w.vis[k].nUsed!==stamp) netS.vanished.push(w.vis[k]); // gone from this line: a stray now, someone else's, or dead
+}
+/* Second pass: the line itself. A matched zombie moves on from its last host position; a newcomer starts from the stray it
+   was (a rejoin), the zombie it was in another line (a bite's spoils), or for one new zombie behind a known one at the
+   tail, from where that one was (eat() puts the newcomer on the last zombie); anything else appears where it is. The
+   culled rest are parked far away, so the count stays whole. */
+function netCommitPlayer(sp,i,dtS,stamp){
+  var w=netS.work[i], P=w.P, me=P===G.me, vis=w.vis, far=w.far, al=w.al, a=sp.segs, c=a.length/4, n=Math.max(c,sp.n|0), sg=netF(P,'segs'), k, fi=0;
+  sg.length=0;
+  for(k=0;k<c;k++){ var x=a[k*4], y=a[k*4+1], h=a[k*4+2], pid=NET_PROF[a[k*4+3]]||'intern', o=al[k]>=0?vis[al[k]]:null;
+    if(o){ if(dtS>0){ o.vx=Math.max(-NET_VMAX,Math.min(NET_VMAX,(x-o.nx1)/dtS)); o.vy=Math.max(-NET_VMAX,Math.min(NET_VMAX,(y-o.ny1)/dtS)); } o.nx0=o.nx1; o.ny0=o.ny1; o.nh0=o.nh1; o.nNew=0; }
+    else { var sx=x, sy=y, sh=h, prev=k?sg[k-1]:null, from=netTakeFrom(netS.strayOld,pid,x,y,stamp)||netTakeFrom(netS.vanished,pid,x,y,stamp);
+      o=netS.segPool.pop()||{}; netSegInit(o,pid,x,y,h); o.nNew=1;
+      if(from){ sx=from.nx1; sy=from.ny1; sh=from.nh1===undefined?h:from.nh1; o.hair=from.hair; o.ph=from.ph; o.walk=from.walk; o.lx=from.lx||0; o.ly=from.ly||0; }
+      else if(prev&&!prev.nNew&&Math.abs(x-prev.nx1)+Math.abs(y-prev.ny1)<NET_TAKE_D*1.4){ sx=prev.nx0; sy=prev.ny0; sh=prev.nh0; o.lx=prev.lx||0; o.ly=prev.ly||0; }
+      o.nx0=o.x=o.gx=sx; o.ny0=o.y=o.gy=sy; o.nh0=o.tang=sh; o.vx=o.vy=0; }
+    o.far=false; o.nx1=x; o.ny1=y; o.nh1=h; sg.push(o); }
+  for(k=c;k<n;k++){ var f=fi<far.length?far[fi++]:null; if(!f){ f=netS.segPool.pop()||{}; netSegInit(f,'intern',-1e5,-1e5,0); } f.far=true; f.x=f.y=f.nx0=f.ny0=f.nx1=f.ny1=-1e5; f.vx=f.vy=0; sg.push(f); }
+  for(;fi<far.length;fi++) netS.segPool.push(far[fi]);
+  w.vis.length=0; w.far.length=0; w.P=null;
+  if(sp.maxHp&&!me){ var st=netF(P,'st'); if(st) st.maxHp=sp.maxHp; }
+  if(sp.ghost){ var gk='g'+P.id, gm=netS.gmap[gk]; if(!gm){ gm=netS.gmap[gk]=netMiniInit({},sp.ghost.kind,sp.ghost.x,sp.ghost.y); gm.ghost=P; } netMiniSet(gm,sp.ghost); if(!P.ghost||P.ghost.m!==gm) P.ghost={kind:sp.ghost.kind,m:gm,t:0,first:false,cd:0}; P.ghost.cd=+sp.ghost.cd||0; } // cd: the summon pad's BACK IN
+  else if(P.ghost){ delete netS.gmap['g'+P.id]; P.ghost=null; }
+}
+function netSegInit(o,pid,x,y,h){ o.id=pid; o.ty=PROF[pid]; o.x=o.gx=o.nx0=o.nx1=x; o.y=o.gy=o.ny0=o.ny1=y; o.tang=o.nh0=o.nh1=h; o.vx=o.vy=0; o.lx=o.ly=0; o.ph=jrand()*TAU; o.hair=HAIRS[Math.floor(jrand()*HAIRS.length)]; o.skin=ZSKIN; o.hp=1; o.moving=false; o.helpT=0; o.hitFx=0; o.gap=0; o.off=0; o.spd=1; o.far=false; o.dead=false; o.walk=jrand()*TAU; return o; }
+/* G.me's powers come from its mob (stacks follow it): counted from the visible zombies in a snapshot, scaled to the whole mob. */
+function netStacksOf(a,n){ var cnt=netS.cnt||(netS.cnt={}), k, vis=a.length/4; for(k in ABIL) cnt[k]=0; for(k=0;k<vis;k++){ var ty=PROF[NET_PROF[a[k*4+3]]], ab=ty&&ty.ab; if(ab) cnt[ab]++; }
+  var sc=vis?Math.max(n,vis)/vis:1; for(k in ABIL) G.stacks[k]=Math.round(cnt[k]*sc); var mx=G.st?G.st.maxHp:100; G.st=stats(); G.st.maxHp=mx; }
+/* Strays, matched like a line (G.strays keeps the host's order); a new one starts where the zombie it was stood. */
+function netApplyStrays(a,old,al,dtS){
+  var arr=G.strays, n=a.length/6, k, stamp=netS.sStamp;
+  arr.length=0;
+  for(k=0;k<n;k++){ var x=a[k*6], y=a[k*6+1], h=a[k*6+2], pid=NET_PROF[a[k*6+3]]||'intern', o=al[k]>=0?old[al[k]]:null;
+    if(o){ if(dtS>0){ o.vx=Math.max(-NET_VMAX,Math.min(NET_VMAX,(x-o.nx1)/dtS)); o.vy=Math.max(-NET_VMAX,Math.min(NET_VMAX,(y-o.ny1)/dtS)); } o.nx0=o.nx1; o.ny0=o.ny1; o.nh0=o.nh1; }
+    else { var from=netTakeFrom(netS.vanished,pid,x,y,stamp);
+      o=netS.strayPool.pop()||{}; o.id=pid; o.ty=PROF[pid]; o.x=o.nx0=x; o.y=o.ny0=y; o.h=o.nh0=h; o.vx=o.vy=0; o.hair=HAIRS[Math.floor(jrand()*HAIRS.length)]; o.skin=ZSKIN; o.walk=jrand()*TAU; o.ph=jrand()*TAU; o.hp=2; o.dead=false; o.docile=false; o.rageT=0; o.tellT=0; o.flyT=0; o.hitFx=0; o.lx=o.ly=0;
+      if(from){ o.x=o.nx0=from.nx1; o.y=o.ny0=from.ny1; o.h=o.nh0=from.nh1; o.hair=from.hair; o.ph=from.ph; o.walk=from.walk; o.lx=from.lx||0; o.ly=from.ly||0; } }
+    o.nUsed=stamp; o.from=a[k*6+4]; o.hostile=a[k*6+5]?1:0; o.nx1=x; o.ny1=y; o.nh1=h; arr.push(o); }
+  for(k=0;k<old.length;k++) if(old[k].nUsed!==stamp) netS.strayPool.push(old[k]);
 }
 /* Shoved furniture, shut gates and foam, so the predicted head meets what the host's head meets. */
 function netApplyWorld(s){
@@ -8359,60 +8574,22 @@ function netApplyWorld(s){
   var fo=F.foam||(F.foam=[]), b=s.foam||[], pool=netS.foamPool; for(i=0;i<fo.length;i++) pool.push(fo[i]); fo.length=0;
   for(i=0;i+3<b.length;i+=4){ var f=pool.pop()||{}; f.x=b[i]; f.y=b[i+1]; f.r=b[i+2]; f.t=b[i+3]; fo.push(f); }
 }
-function netApplyPlayer(sp){
-  var P=playerById(sp.id), me=P===G.me, k;
-  if(!P){ P=netNewPlayer(sp.id,{remote:true}); G.players.push(P); }
-  var hd=netF(P,'head'), was=netF(P,'hp');
-  if(P.alive&&!sp.alive){ P.alive=false; if(P.diedAt===null||P.diedAt===undefined) P.diedAt=G.match.clock; } // a late joiner learns who is already dead (a live death comes first as an 'e')
-  netSet(P,'hp',sp.hp); if(me&&sp.hp<was-0.5) G.hurt=Math.max(G.hurt||0,0.25);
-  hd.r=sp.r; P.netN=sp.n;
-  // the host's head: interpolated for everyone; for G.me it is the reference the prediction is reconciled against
-  if(hd.nx1===undefined||Math.hypot(sp.x-hd.nx1,sp.y-hd.ny1)>NET_SNAP_D*2){ hd.nx0=hd.nx1=sp.x; hd.ny0=hd.ny1=sp.y; hd.nh0=hd.nh1=sp.h; if(!me||!netPredicting()){ hd.x=sp.x; hd.y=sp.y; hd.h=sp.h; } }
-  else { hd.nx0=me?(netS.hostX===null?sp.x:netS.hostX):hd.x; hd.ny0=me?(netS.hostX===null?sp.y:netS.hostY):hd.y; hd.nh0=me?hd.nh1:hd.h; hd.nx1=sp.x; hd.ny1=sp.y; hd.nh1=sp.h; }
-  if(me){ if(netS.hostX===null){ netS.hostX=sp.x; netS.hostY=sp.y; } netReconcile(sp.x,sp.y,sp.h); }
-  // segs: the visible ones first, matched to what is drawn now (same profession within two places); the culled rest parked
-  var sg=netF(P,'segs'), old=netS.segOld||(netS.segOld=[]), a=sp.segs, c=a.length/4, n=Math.max(c,sp.n|0);
-  old.length=0; for(k=0;k<sg.length;k++) old.push(sg[k]);
-  var stamp=(netS.stamp=(netS.stamp||0)+1); sg.length=0;
-  for(k=0;k<c;k++){ var x=a[k*4], y=a[k*4+1], h=a[k*4+2], pid=NET_PROF[a[k*4+3]]||'intern', best=null, bd=60*60;
-    for(var j=Math.max(0,k-2);j<=Math.min(old.length-1,k+2);j++){ var o=old[j]; if(o.nUsed===stamp||o.far||o.id!==pid) continue; var dd=(o.x-x)*(o.x-x)+(o.y-y)*(o.y-y); if(dd<bd){ bd=dd; best=o; } }
-    if(!best){ best=netS.segPool.pop()||{}; netSegInit(best,pid,x,y,h); }
-    best.nUsed=stamp; best.far=false; best.nx0=best.x; best.ny0=best.y; best.nh0=best.tang; best.nx1=x; best.ny1=y; best.nh1=h; sg.push(best); }
-  for(k=c;k<n;k++){ var f=null; for(var j2=0;j2<old.length;j2++){ if(old[j2].nUsed!==stamp&&old[j2].far){ f=old[j2]; break; } } if(!f){ f=netS.segPool.pop()||{}; netSegInit(f,'intern',-1e5,-1e5,0); } f.nUsed=stamp; f.far=true; f.x=f.y=f.nx0=f.ny0=f.nx1=f.ny1=-1e5; sg.push(f); }
-  for(k=0;k<old.length;k++) if(old[k].nUsed!==stamp) netS.segPool.push(old[k]);
-  if(me) netStacks(sg,n);
-  if(sp.maxHp){ var st=netF(P,'st'); if(st) st.maxHp=sp.maxHp; }
-  if(sp.ghost){ var gk='g'+P.id, gm=netS.gmap[gk]; if(!gm){ gm=netS.gmap[gk]=netMiniInit({},sp.ghost.kind,sp.ghost.x,sp.ghost.y); gm.ghost=P; } netMiniSet(gm,sp.ghost); if(!P.ghost||P.ghost.m!==gm) P.ghost={kind:sp.ghost.kind,m:gm,t:0,first:false,cd:0}; P.ghost.cd=+sp.ghost.cd||0; } // cd: the summon pad's BACK IN
-  else if(P.ghost){ delete netS.gmap['g'+P.id]; P.ghost=null; }
-}
-function netSegInit(o,pid,x,y,h){ o.id=pid; o.ty=PROF[pid]; o.x=o.gx=o.nx0=o.nx1=x; o.y=o.gy=o.ny0=o.ny1=y; o.tang=o.nh0=o.nh1=h; o.ph=jrand()*TAU; o.hair=HAIRS[Math.floor(jrand()*HAIRS.length)]; o.skin=ZSKIN; o.hp=1; o.moving=false; o.helpT=0; o.hitFx=0; o.gap=0; o.off=0; o.spd=1; o.far=false; o.dead=false; o.walk=jrand()*TAU; return o; }
-/* G.me's powers come from its mob (stacks follow it): counted from the visible zombies, scaled to the whole mob. */
-function netStacks(sg,n){ var cnt=netS.cnt||(netS.cnt={}), k, vis=0; for(k in ABIL) cnt[k]=0; for(k=0;k<sg.length;k++){ if(sg[k].far) continue; vis++; var ab=sg[k].ty&&sg[k].ty.ab; if(ab) cnt[ab]++; }
-  var sc=vis?n/vis:1; for(k in ABIL) G.stacks[k]=Math.round(cnt[k]*sc); var mx=G.st?G.st.maxHp:100; G.st=stats(); G.st.maxHp=mx; }
-function netApplyStrays(a){
-  var arr=G.strays, old=netS.strayOld||(netS.strayOld=[]), n=a.length/6, k, j, stamp=(netS.stamp=(netS.stamp||0)+1);
-  old.length=0; for(k=0;k<arr.length;k++) old.push(arr[k]); arr.length=0;
-  for(k=0;k<n;k++){ var x=a[k*6], y=a[k*6+1], h=a[k*6+2], pid=NET_PROF[a[k*6+3]]||'intern', best=null, bd=60*60;
-    for(j=Math.max(0,k-2);j<=Math.min(old.length-1,k+2);j++){ var o=old[j]; if(o.nUsed===stamp||o.id!==pid) continue; var dd=(o.x-x)*(o.x-x)+(o.y-y)*(o.y-y); if(dd<bd){ bd=dd; best=o; } }
-    if(!best){ best=netS.strayPool.pop()||{}; best.id=pid; best.ty=PROF[pid]; best.x=best.nx0=x; best.y=best.ny0=y; best.h=best.nh0=h; best.hair=HAIRS[Math.floor(jrand()*HAIRS.length)]; best.skin=ZSKIN; best.walk=jrand()*TAU; best.ph=jrand()*TAU; best.hp=2; best.dead=false; best.docile=false; best.rageT=0; best.tellT=0; best.flyT=0; best.hitFx=0; }
-    best.nUsed=stamp; best.from=a[k*6+4]; best.hostile=a[k*6+5]?1:0; best.nx0=best.x; best.ny0=best.y; best.nh0=best.h; best.nx1=x; best.ny1=y; best.nh1=h; arr.push(best); }
-  for(k=0;k<old.length;k++) if(old[k].nUsed!==stamp) netS.strayPool.push(old[k]);
-}
 function netTy(pid,w){ if(!w) return PROF[pid]; var key=pid+'|'+w, t=netOwn(netS.tyCache,key)?netS.tyCache[key]:null, k; if(t) return t;
   var A=ARMS[NET_ARMS[w-1]], B=A&&PROF[A.base]; if(!B) return PROF[pid]; t=Object.create(PROF[pid]); for(k in B) if(!ARM_KEEP[k]) t[k]=B[k]; t.hostile=true; return (netS.tyCache[key]=t); }
 function netApplyHumans(a){
   var map=netS.hmap, arr=G.humans, stamp=(netS.stamp=(netS.stamp||0)+1), k;
   arr.length=0;
-  for(k=0;k<a.length;k++){ var r=a[k], key='u'+r.u, h=netOwn(map,key)?map[key]:null, pid=NET_PROF[r.p]||'intern', fl=r.flags|0;
+  for(k in netS.gone) if(netOwn(netS.gone,k)&&netS.gone[k]<netS.tB-1) delete netS.gone[k]; // eaten: an older snapshot in the queue must not bring them back
+  for(k=0;k<a.length;k++){ var r=a[k], key='u'+r.u; if(netOwn(netS.gone,key)) continue; var h=netOwn(map,key)?map[key]:null, pid=NET_PROF[r.p]||'intern', fl=r.flags|0;
     if(!h){ h=map[key]={uid:r.u,x:r.x,y:r.y,h:r.h,face:r.f,nx0:r.x,ny0:r.y,nx1:r.x,ny1:r.y,nh0:r.h,nh1:r.h,nf0:r.f,nf1:r.f,walk:jrand()*TAU,phase:jrand()*TAU,born:fl&NET_F_NEW?0:5,dead:false,hitFx:0,fearFx:0,btnT:0,chg:0}; }
     h.nUsed=stamp; h.id=pid; h.ty=netTy(pid,r.w); h.arm=r.w?NET_ARMS[r.w-1]:null; h.armor=r.hp|0;
-    h.nx0=h.x; h.ny0=h.y; h.nh0=h.h; h.nf0=h.face; h.nx1=r.x; h.ny1=r.y; h.nh1=r.h; h.nf1=r.f;
+    h.nx0=h.nx1; h.ny0=h.ny1; h.nh0=h.nh1; h.nf0=h.nf1; h.nx1=r.x; h.ny1=r.y; h.nh1=r.h; h.nf1=r.f;
     h.skin=HUMAN_SKINS[fl&7]||HUMAN_SKINS[0]; var hr=(fl>>3)&7; h.hair=hr===7?(PROF[pid].cap||HAIRS[0]):(HAIRS[hr]||HAIRS[0]);
     h.moving=!!(fl&NET_F_MOVE); h.panic=fl&NET_F_PANIC?1:0; h.pushAnim=fl&NET_F_PUSH?0.2:0; h.task=null; h.job=null; h.stunT=fl&NET_F_STUN?1:0;
     if(fl&NET_F_FEAR) h.fearFx=Math.max(h.fearFx,0.2); if(fl&NET_F_HIT) h.hitFx=Math.max(h.hitFx,0.06); h.bileT=fl&NET_F_BILE?1:0; h.key=!!(fl&NET_F_KEY);
     h.btnT=fl&NET_F_BTN?(h.btnT||0.001):0; h.chg=fl&NET_F_CHG?(h.chg>0?h.chg:1.1):0; h.aimT=fl&NET_F_AIM?1:0; h.fs=NET_FS[r.s]||'approach';
     arr.push(h); }
-  for(k in map) if(netOwn(map,k)&&map[k].nUsed!==stamp) delete map[k];
+  for(k in map) if(netOwn(map,k)&&map[k].nUsed!==stamp){ if(netOwn(netS.eatPend,k)){ var e=map[k]; e.nUsed=stamp; e.nx0=e.nx1; e.ny0=e.ny1; e.nh0=e.nh1; e.nf0=e.nf1; e.moving=false; arr.push(e); } else delete map[k]; } // a rival's meal waits for the rival
 }
 function netApplyProj(a){
   var arr=G.proj, k, n=a.length/4, pool=netS.projPool, gr=netS.gren||(netS.gren={}), seen={};
@@ -8426,7 +8603,7 @@ function netApplyProj(a){
 }
 function netGrenadeFrom(x,y){ var best=null, bd=600*600, i; for(i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(h.ty.kind!=='grenadier'&&h.arm!=='grenade') continue; var d=(h.x-x)*(h.x-x)+(h.y-y)*(h.y-y); if(d<bd){ bd=d; best=h; } } return best?{x:best.x,y:best.y}:{x:x,y:y}; }
 function netMiniInit(m,kind,x,y){ m.isMini=true; m.kind=kind; m.x=m.px=m.nx0=m.nx1=x; m.y=m.py=m.ny0=m.ny1=y; m.r=26; m.face=m.nh0=m.nh1=0; m.h=0; m.lobs=[]; m.dead=false; m.awake=true; m.walk=0; m.flash=0; m.slowT=0; m.state='idle'; m.sub=''; m.t=0; m.dur=1; m.tx=x; m.ty=y; m.hp=m.max=1; return m; }
-function netMiniSet(m,r){ var st=r.st|0; m.kind=r.kind; m.nx0=m.x; m.ny0=m.y; m.nh0=m.face; m.nx1=r.x; m.ny1=r.y; m.nh1=r.h; m.hp=r.hp; m.max=r.maxHp||m.max;
+function netMiniSet(m,r){ var st=r.st|0; m.kind=r.kind; m.nx0=m.nx1; m.ny0=m.ny1; m.nh0=m.nh1; m.nx1=r.x; m.ny1=r.y; m.nh1=r.h; m.hp=r.hp; m.max=r.maxHp||m.max;
   m.state=NET_MST[st%8]||'idle'; m.sub=NET_MSUB[Math.floor(st/8)%8]||''; m.t=(Math.floor(st/64)%32)/20; m.dur=1; m.flash=st&2048?0.06:0; m.slowT=st&4096?1:0;
   if(m.sub==='lob'){ var P=nearestPlayer(m.x,m.y,true); if(P){ var hd=netF(P,'head'); m.tx=hd.x; m.ty=hd.y; } } }
 function netApplyMinis(a){
@@ -8438,18 +8615,22 @@ function netApplyMinis(a){
 }
 function netPredicting(){ var M=G.match; return !!(M&&M.phase==='play'&&G.me&&G.me.alive&&!G.me.ghost&&state==='play'); }
 function netLerp(dt){
-  var a=Math.min(1.5,netS.snapT/Math.max(0.02,netS.snapDt)), i, k, o, M=G.match, rg=M.ring;
+  var a=netS.tB>netS.tA?Math.max(0,Math.min(1.5,(netS.rT-netS.tA)/(netS.tB-netS.tA))):1, i, k, o, M=G.match, rg=M.ring;
   if(rg.nx1!==undefined){ var ar=Math.min(1,a); rg.x=rg.nx0+(rg.nx1-rg.nx0)*ar; rg.y=rg.ny0+(rg.ny1-rg.ny0)*ar; rg.r=rg.nr0+(rg.nr1-rg.nr0)*ar; }
   for(i=0;i<G.players.length;i++){ var P=G.players[i], hd=netF(P,'head'), me=P===G.me; if(hd.nx1===undefined) continue;
     var hx=hd.nx0+(hd.nx1-hd.nx0)*a, hy=hd.ny0+(hd.ny1-hd.ny0)*a;
     if(!P.alive){ hx=hd.nx1; hy=hd.ny1; } // the dead stand where they fell
     if(me){ netS.hostX=hx; netS.hostY=hy; if(!netPredicting()){ netWalk(P,hd,hx,hy,dt); hd.x=hx; hd.y=hy; hd.h=hd.nh0+angNorm(hd.nh1-hd.nh0)*Math.min(1,a); } }
     else { netWalk(P,hd,hx,hy,dt); hd.x=hx; hd.y=hy; hd.h=hd.nh0+angNorm(hd.nh1-hd.nh0)*Math.min(1,a); }
-    // G.me's front zombies lean towards the predicted head, so the head never runs away from its own mob
-    var sg=netF(P,'segs'), ofx=me?hd.x-netS.hostX:0, ofy=me?hd.y-netS.hostY:0;
-    for(k=0;k<sg.length;k++){ o=sg[k]; if(o.far) continue; var w=me&&k<24?1-k/24:0, nx=o.nx0+(o.nx1-o.nx0)*a+ofx*w, ny=o.ny0+(o.ny1-o.ny0)*a+ofy*w;
+    // G.me's front zombies lean towards the predicted head, so the head never runs away from its own mob. Each zombie
+    // eases its own lean (lx,ly) to its place's share: a zombie whose place changes (a bite's spoils joining, a cut) or
+    // that leaves the line slides to its new lean instead of jumping by the difference
+    var sg=netF(P,'segs'), ofx=me?hd.x-netS.hostX:0, ofy=me?hd.y-netS.hostY:0, le=1-Math.exp(-dt/NET_LEAN_T);
+    for(k=0;k<sg.length;k++){ o=sg[k]; if(o.far) continue; var w=me&&k<24?1-k/24:0; o.lx=(o.lx||0)+(ofx*w-(o.lx||0))*le; o.ly=(o.ly||0)+(ofy*w-(o.ly||0))*le;
+      var nx=o.nx0+(o.nx1-o.nx0)*a+o.lx, ny=o.ny0+(o.ny1-o.ny0)*a+o.ly;
       o.moving=Math.abs(nx-o.x)+Math.abs(ny-o.y)>0.2; o.x=o.gx=nx; o.y=o.gy=ny; o.tang=o.nh0+angNorm(o.nh1-o.nh0)*Math.min(1,a); } }
-  for(i=0;i<G.strays.length;i++){ o=G.strays[i]; var sx=o.nx0+(o.nx1-o.nx0)*a, sy=o.ny0+(o.ny1-o.ny0)*a, d=Math.abs(sx-o.x)+Math.abs(sy-o.y); o.moving=d>0.2; o.walk+=d*0.1; o.x=sx; o.y=sy; o.h=o.nh0+angNorm(o.nh1-o.nh0)*Math.min(1,a); }
+  for(i=0;i<G.strays.length;i++){ o=G.strays[i]; if(o.lx||o.ly){ var le2=Math.exp(-dt/NET_LEAN_T); o.lx*=le2; o.ly*=le2; if(Math.abs(o.lx)+Math.abs(o.ly)<0.05) o.lx=o.ly=0; } // a zombie cut from G.me's line lets go of its lean
+    var sx=o.nx0+(o.nx1-o.nx0)*a+(o.lx||0), sy=o.ny0+(o.ny1-o.ny0)*a+(o.ly||0), d=Math.abs(sx-o.x)+Math.abs(sy-o.y); o.moving=d>0.2; o.walk+=d*0.1; o.x=sx; o.y=sy; o.h=o.nh0+angNorm(o.nh1-o.nh0)*Math.min(1,a); }
   for(i=0;i<G.humans.length;i++){ o=G.humans[i]; var ux=o.nx0+(o.nx1-o.nx0)*a, uy=o.ny0+(o.ny1-o.ny0)*a; if(o.moving) o.walk+=(Math.abs(ux-o.x)+Math.abs(uy-o.y))*0.1;
     o.x=ux; o.y=uy; o.h=o.nh0+angNorm(o.nh1-o.nh0)*Math.min(1,a); o.face=o.nf0+angNorm(o.nf1-o.nf0)*Math.min(1,a); o.aimA=o.face;
     if(o.born<5) o.born+=dt; if(o.fearFx>0) o.fearFx-=dt; if(o.btnT>0) o.btnT=Math.min(0.6,o.btnT+dt); if(o.chg>0) o.chg=Math.max(0.05,o.chg-dt); }
@@ -8515,7 +8696,7 @@ function netEvents(list,must){
   for(i=0;i<list.length;i++){ var ev=list[i]; if(!ev||typeof ev!=='object'||!!NET_MUST[ev.k]!==must) continue; netS.recent.push(ev);
     var hd=G.head;
     if(ev.k==='eat'){ var key='u'+ev.uid, h=netOwn(netS.hmap,key)?netS.hmap[key]:null, P=playerById(ev.id);
-      if(h){ h.dead=true; var ix=G.humans.indexOf(h); if(ix>=0) G.humans.splice(ix,1); delete netS.hmap[key]; }
+      netS.gone[key]=netS.hT; if(h){ h.dead=true; var ix=G.humans.indexOf(h); if(ix>=0) G.humans.splice(ix,1); delete netS.hmap[key]; }
       if(ev.id!==me){ if(P) P.chomp=0.3; continue; }
       var who=h||{x:hd.x,y:hd.y,ty:PROF.intern,skin:HUMAN_SKINS[0],id:'intern',phase:0,dead:true};
       if(G.comboT>0) G.combo++; else G.combo=1; G.comboT=G.comboMax=chainWindow(); G.eaten++; G.chomp=0.3;
@@ -8598,7 +8779,8 @@ function netRender(){
   var ul=$('rlList'); if(ul&&ul._h!==html){ ul._h=html; ul.innerHTML=html; }
   vis('rlStart',netS.role==='host'); vis('rlShare',!!netS.code);
   if(Royale.bots&&Royale.bots.lobby) Royale.bots.lobby(sc==='lobby'&&netS.role==='host',netS.lobby.length); // the bots lane fills #rlExtra (ROYALE.md §11)
-  var ct=$('rlCount'); if(ct) ct.textContent=netS.role==='host'?(netS.lobby.length<2?'Waiting for someone to eat.':'Starts by itself in '+netClock(netS.autoT)+'.'):'The host starts it.';
+  var nBots=(Royale.bots&&typeof Royale.bots.fill==='function')?Math.max(0,Math.min(ROYALE_MAX,Royale.bots.fill())-netS.lobby.length):0;
+  var ct=$('rlCount'); if(ct) ct.textContent=netS.role==='host'?(netS.lobby.length<2?(nBots>0?'Just you and '+nBots+' bot'+(nBots>1?'s':'')+'. START when ready.':'Waiting for someone to eat.'):'Starts by itself in '+netClock(netS.autoT)+'.'):'The host starts it.';
   var mg=$('rlMsg'); if(mg) mg.textContent=netS.msg||'';
   var ng=$('rlNet'); if(ng) ng.textContent=netS.relay===true?'Relay: ready.':netS.relay===false?'Relay: none from this phone. Same Wi-Fi as the host, or try again.':'';
 }
@@ -8641,7 +8823,7 @@ Royale.net={
     opts=opts||{}; if(netS.role){ Royale.net.leave(); netS.screen='menu'; netShow(true); }
     netS.role='host'; netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=1; netS.msg=''; if(!opts.transport) netProbeRelay();
     netS.code=opts.code||netCode(); netS.autoT=NET_AUTO; netS.pend=[]; netS.peers={};
-    if(G&&G.match&&G.match.host){ netS.started=true; netS.lobby=[]; for(var i=0;i<G.players.length;i++){ var P=G.players[i]; netS.lobby.push({id:P.id,name:P.name,colour:P.colour,skin:P.skin,peer:null}); } netS.me=G.me.id; }
+    if(G&&G.match&&G.match.host){ netS.started=true; netS.lobby=[]; for(var i=0;i<G.players.length;i++){ var P=G.players[i]; if(P.bot) continue; netS.lobby.push({id:P.id,name:P.name,colour:P.colour,skin:P.skin,peer:null}); } netS.me=G.me.id; } // bots are never in the lobby (§11); they travel in the start list
     else netS.lobby=[{id:1,name:netS.name,colour:0,skin:netS.skin,peer:null}];
     var tries=0;
     netMakeTransport(opts,function(err,T){ if(err){ netS.role=null; return; }
@@ -8676,6 +8858,7 @@ Royale.net={
     } finally { netS.leaving=false; }
   },
   isHost:function(){ return netS.role==='host'; },
+  code:function(){ return netS.code; }, // the lobby's four letters (the bots lane names its bots from them)
   /* The drop pick (lane C's minimap): a guest sends it, the host hands its own to Royale.match.pickDrop. */
   drop:function(x,y){ if(netS.role==='guest'&&netS.T) netS.T.send('host',{t:'drop',x:Math.round(x),y:Math.round(y)}); else if(netS.role==='host'&&Royale.match&&Royale.match.pickDrop&&G.match&&isFinite(x)&&isFinite(y)) Royale.match.pickDrop(G.me,+x,+y); },
   /* AGAIN / REVENGE (ROYALE.md §6.2): the host reopens its lobby with everyone still here; a guest asks and waits. */
@@ -9043,24 +9226,25 @@ Royale.match={
 };
 /* ---------- Parade Royale: fights (lane D; ROYALE.md §4.1 is the contract) ---------- */
 /* Hordes against hordes with the game's own snake rules. Host only, once a frame after the engine's passes (G.me bound):
-   a head on a rival's zombie cuts that line there and takes every second stray it made; a moving head running into its
-   own zombie past the sixth cuts its own line; two heads meet and bounce, unless one horde is at least twice the other,
-   which eats the smaller head whole. A player whose horde stays at zero for FIGHTS_ZERO_T dies. The map holds
-   G.match.cap zombies (mobs plus strays): at the cap eat() adds no zombie and a stray that would push past it is never made.
-   The detection allocates nothing: numbers in typed arrays made at the match's start, plain loops, a box per mob before
-   any per-zombie test. */
-var FIGHTS_SAFE=6,          // the first six zombies of your own line can't be self-cut (ROYALE.md §10)
-    FIGHTS_BITE_GAP=0.5,    // seconds before the same biter and line can cut again: one pass through a line is one cut
+   a head on a rival's zombie cuts that line there and takes every second stray it made; a head passes over its own line
+   (owner, 20 Oct: no self-cuts in a match); two heads meet and both bounce, nobody eaten whole, each shedding zombies from
+   the tail and HP by how outsized it is (the smaller takes more). A player whose horde stays at zero for FIGHTS_ZERO_T
+   dies. The map holds G.match.cap zombies (mobs plus strays): at the cap eat() adds no zombie and a stray that would push
+   past it is never made. The detection allocates nothing: numbers in typed arrays made at the match's start, plain loops,
+   a box per mob before any per-zombie test. */
+var FIGHTS_BITE_GAP=0.5,    // seconds before the same biter and line can cut again: one pass through a line is one cut
     FIGHTS_MEET_GAP=1,      // seconds before the same two heads collide again
     FIGHTS_PUSH=30,         // each head is pushed this far back on a bounce (60 px apart)
     FIGHTS_PUSH_STEP=6,     // in steps this long, each through resolveHead, so a wall holds
-    FIGHTS_BOUNCE_LOSS=0.1, // of each horde, from the tail
-    FIGHTS_BOUNCE_MIN=2,
-    FIGHTS_EAT_RATIO=2,     // at least twice the other's size eats it
+    /* Head-on (ROYALE.md §4.1, owner 20 Oct): d = the rival's horde over your own (sizes at least 1), clamped to
+       [D_MIN, D_MAX]; you shed clamp(ZOMB*d, ZOMB_MIN, ZOMB_MAX) of your horde from the tail (at least 1, at least
+       ZOMB_EVEN when d >= 1) and clamp(HP*d, HP_MIN, HP_MAX) health. Equal: 10% and 6; twice the size: 20%/12 against
+       5%/3; four times: 40%/24 against 5%/3. */
+    FIGHTS_CLASH_D_MIN=0.25, FIGHTS_CLASH_D_MAX=4,
+    FIGHTS_CLASH_ZOMB=0.10, FIGHTS_CLASH_ZOMB_MIN=0.05, FIGHTS_CLASH_ZOMB_MAX=0.40, FIGHTS_CLASH_ZOMB_EVEN=2,
+    FIGHTS_CLASH_HP=6, FIGHTS_CLASH_HP_MIN=3, FIGHTS_CLASH_HP_MAX=24,
     FIGHTS_ZERO_T=1.2,      // seconds at zero before a horde is out: long enough to grab back a fresh stray (joinT 0.8 s)
-    FIGHTS_CREDIT_T=1.5,    // a rival who took the last zombie this long before the death gets the kill
-    FIGHTS_MOVING=0.5,      // of its full speed: a head moving slower is standing or pinned (updateMob bunches the line round it) and crosses nothing
-    FIGHTS_CROSS=0.707;     // |cos| of the head's heading against the line's: at or above it (within 45 degrees of the line, either way) the head runs along it, not across
+    FIGHTS_CREDIT_T=1.5;    // a rival who took the last zombie this long before the death gets the kill
 /* Every number the detection writes lives in a typed array (a plain var holding a fraction would box a new number every
    frame), sized at the match's start by the largest player id. fightsClk[0] is the fights clock in seconds. Who took a
    player's last zombie: fightsLost = 0 nobody/anything else, 1 the ring, 2 a rival (fightsLostBy), at fightsLostAt. */
@@ -9104,70 +9288,73 @@ function fightsBite(P,Q,i){
   fightsPeak(P);
   if(P===G.me) stamp(n?'CUT ×'+n:'CUT',n>=10?3:2,G.head.x,G.head.y); // one word over the biter's head, on the biter's screen
   bindPlayer(was);
-  fightsBiteAt[P.id*fightsN+P.id]=fightsClk[0]; // the zombies just taken join where their strays stood, round the head: no self-cut while they walk back
   var bo=fightsMap(P.stats,'bitesOn'), fb=fightsMap(P.stats,'firstBite');
   P.stats.bites++; bo[Q.id]=(bo[Q.id]||0)+1; P.stats.taken+=n; P.stats.dmgTo[Q.id]=(P.stats.dmgTo[Q.id]||0)+n; Q.stats.lost+=cut;
   if(n&&fb[Q.id]===undefined) fb[Q.id]=G.match.clock; // the nemesis tie-break: who started it
   G.match.events.push({k:'bite',by:P.id,of:Q.id,n:n});
 }
-/* P's head on its own zombie i (past the sixth): the line cuts there, everything behind strays. */
-function fightsSelfCut(P,i){
-  var was=G.cur; bindPlayer(P);
-  var before=G.segs.length; fightsActor=P.id; removeSeg(i,'bite'); fightsActor=0; P.stats.lost+=before-G.segs.length;
-  bindPlayer(was);
-}
-/* Two heads meet. At least twice the size eats the other head whole; otherwise both bounce and shed from the tail (a head
-   with no zombies sheds nothing and costs its rival nothing). */
+/* Head-on: how outsized `own` is against `other` (both at least 1), and the share that costs it. */
+function fightsClashD(own,other){ return Math.max(FIGHTS_CLASH_D_MIN,Math.min(FIGHTS_CLASH_D_MAX,Math.max(1,other)/Math.max(1,own))); }
+/* Zombies a horde of `own` sheds against one of `other`: none when either has none (a head with no zombies costs its rival
+   nothing), never more than it has. */
+function fightsClashZombies(own,other){ if(own<1||other<1) return 0; var d=fightsClashD(own,other);
+  var f=Math.max(FIGHTS_CLASH_ZOMB_MIN,Math.min(FIGHTS_CLASH_ZOMB_MAX,FIGHTS_CLASH_ZOMB*d));
+  return Math.min(own,Math.max(d>=1?FIGHTS_CLASH_ZOMB_EVEN:1,Math.floor(own*f+1e-9))); }
+/* Health a head with a horde of `own` loses against one of `other` (an empty horde still takes it). */
+function fightsClashHp(own,other){ return Math.max(FIGHTS_CLASH_HP_MIN,Math.min(FIGHTS_CLASH_HP_MAX,FIGHTS_CLASH_HP*fightsClashD(own,other))); }
+/* Two heads meet: both bounce 30 px back along the line between them and shed from the tail and from their health, the
+   smaller more (nobody is eaten whole). The shares are fixed from the sizes before either sheds. */
 function fightsMeet(A,B){
   var na=fightsSegs(A).length, nb=fightsSegs(B).length;
-  if(na>=1&&nb>=1&&(na>=FIGHTS_EAT_RATIO*nb||nb>=FIGHTS_EAT_RATIO*na)){ if(na>=nb) fightsSwallow(A,B); else fightsSwallow(B,A); return; }
-  var ha=headOf(A), hb=headOf(B), dx=ha.x-hb.x, dy=ha.y-hb.y, d=Math.sqrt(dx*dx+dy*dy), loss=na>=1&&nb>=1;
+  var ha=headOf(A), hb=headOf(B), dx=ha.x-hb.x, dy=ha.y-hb.y, d=Math.sqrt(dx*dx+dy*dy);
   var ux=d>0.001?dx/d:Math.cos(ha.h+Math.PI), uy=d>0.001?dy/d:Math.sin(ha.h+Math.PI), ang=Math.atan2(uy,ux);
-  fightsBounce(A,ux,uy,B,loss); fightsBounce(B,-ux,-uy,A,loss);
+  fightsBounce(A,ux,uy,B,fightsClashZombies(na,nb),fightsClashHp(na,nb));
+  fightsBounce(B,-ux,-uy,A,fightsClashZombies(nb,na),fightsClashHp(nb,na));
   fightsBounced[A.id]=fightsBounced[B.id]=fightsFrame;
   G.match.events.push({k:'bounce',a:A.id,b:B.id});
   ha=headOf(A); hb=headOf(B);
   hitFx(ha,ha.x,ha.y,ang,[ZSKIN,'#efe7d2','#b3202b'],'punch');
   hitFx(hb,hb.x,hb.y,ang+Math.PI,[ZSKIN,'#efe7d2','#b3202b'],null);
 }
-function fightsBounce(P,ux,uy,by,loss){
+/* P knocked back along (ux,uy) by `by`: k zombies off the tail (no fracture, no strays) and hp health. The health is
+   environmental, like the ring's (ROYALE.md §4.1, §4.2): straight off G.hp with P bound, never through hurt, skipped only
+   while reviving; a clash that kills is 'eaten' by the rival, and core's death check at the end of the frame does the
+   rest. */
+function fightsBounce(P,ux,uy,by,k,hp){
   var was=G.cur; bindPlayer(P);
-  var hd=G.head, F=G.F, left=FIGHTS_PUSH, st;
+  var hd=G.head, F=G.F, left=FIGHTS_PUSH, st, ox=hd.x, oy=hd.y;
   while(left>0){ st=Math.min(FIGHTS_PUSH_STEP,left); left-=st; hd.x+=ux*st; hd.y+=uy*st; resolveHead(hd,F,1/60); }
-  fightsTrail(ux,uy);
-  var n=G.segs.length, k=loss?Math.min(n,Math.max(FIGHTS_BOUNCE_MIN,Math.floor(n*FIGHTS_BOUNCE_LOSS))):0;
-  fightsActor=by.id; for(var q=0;q<k;q++) removeSeg(G.segs.length-1,'bounce'); fightsActor=0;
-  P.stats.lost+=k;
+  fightsTrail(ox,oy,ux,uy);
+  var n0=G.segs.length; fightsActor=by.id; for(var q=0;q<k&&G.segs.length;q++) removeSeg(G.segs.length-1,'bounce'); fightsActor=0;
+  var shed=n0-G.segs.length; P.stats.lost+=shed;
+  // what a clash sheds is damage done by the rival (the nemesis is argmax dmgTo, ROYALE.md §2), as a bite's zombies are
+  if(shed>0&&by!==P&&by.alive){ by.stats.dmgTo[P.id]=(by.stats.dmgTo[P.id]||0)+shed;
+    var fb=fightsMap(by.stats,'firstBite'); if(fb[P.id]===undefined) fb[P.id]=G.match.clock; }
+  if(!(G.reviveT>0)){ G.deathCause='eaten'; G.deathBy=by.id; G.hp-=hp; G.hurt=Math.max(G.hurt||0,0.15);
+    if(G.hp>0){ G.deathCause=null; G.deathBy=0; } }
   bindPlayer(was);
 }
-/* A head knocked back along (ux,uy) leaves the end of its trail in front of it; the mob walks the trail from its end, so
-   drop the points now ahead of the head (the bound player's) and end the trail at the head, or the front zombies would
-   march forward into the rival. */
-function fightsTrail(ux,uy){ var p=G.path, hd=G.head, q;
-  while(p.length>1){ q=p[p.length-1]; if((q.x-hd.x)*ux+(q.y-hd.y)*uy<0) p.pop(); else break; }
-  q=p[p.length-1]; if(!q||Math.abs(q.x-hd.x)+Math.abs(q.y-hd.y)>0.5) p.push({x:hd.x,y:hd.y}); }
-/* Inside the 1 s after a bounce two heads that touch again are only parted (each half the overlap, walls holding): no loss. */
+/* The bound head was knocked from (ox,oy) along (ux,uy). The mob walks the trail from its end, so the stretch the head
+   was knocked back over (head-on: the end of its own trail, now in front of it) is dropped, or the front zombies would
+   march forward into the rival: a point goes while it lies within the knock of the old position, on the side the head
+   went, and ahead of the head now. Nothing else is dropped: a knock sideways or along the way it was going keeps the
+   trail and the line its spacing (a wiped trail re-forms the line on a chord to its oldest point). The trail then ends
+   at the head. */
+function fightsTrail(ox,oy,ux,uy){ var p=G.path, hd=G.head, kx=hd.x-ox, ky=hd.y-oy, knock=Math.sqrt(kx*kx+ky*ky)+1, q, qx, qy;
+  while(p.length>1){ q=p[p.length-1]; qx=q.x-ox; qy=q.y-oy;
+    if(qx*qx+qy*qy<=knock*knock&&qx*ux+qy*uy>=-0.5&&(q.x-hd.x)*ux+(q.y-hd.y)*uy<-0.5) p.pop(); else break; }
+  fightsTrailEnd(); }
+/* End the bound head's trail at the head (no point dropped). */
+function fightsTrailEnd(){ var p=G.path, hd=G.head, q=p[p.length-1]; if(!q||Math.abs(q.x-hd.x)+Math.abs(q.y-hd.y)>0.5) p.push({x:hd.x,y:hd.y}); }
+/* Inside the 1 s after a bounce two heads that touch again are only parted (each half the overlap, walls holding): no loss.
+   The same trail rule as a knock, over the few pixels of the part: heads still pushing head-on lose the bit of trail they
+   were pushed back over (or the front zombies would walk into the rival's head and be bitten), heads meeting at an angle
+   keep their trails. */
 function fightsPart(A,B){
   var ha=headOf(A), hb=headOf(B), dx=ha.x-hb.x, dy=ha.y-hb.y, d=Math.sqrt(dx*dx+dy*dy), half=(ha.r+hb.r-d)/2+0.5, was=G.cur;
   var ux=d>0.001?dx/d:Math.cos(ha.h+Math.PI), uy=d>0.001?dy/d:Math.sin(ha.h+Math.PI);
-  bindPlayer(A); G.head.x+=ux*half; G.head.y+=uy*half; resolveHead(G.head,G.F,1/60); fightsTrail(ux,uy);
-  bindPlayer(B); G.head.x-=ux*half; G.head.y-=uy*half; resolveHead(G.head,G.F,1/60); fightsTrail(-ux,-uy);
-  bindPlayer(was);
-}
-/* W eats L head-on: L's whole line goes onto W's tail (no strays), L dies 'eaten'. */
-function fightsSwallow(W,L){
-  var was=G.cur, i;
-  bindPlayer(L);
-  var moved=G.segs.splice(0,G.segs.length), m=moved.length;
-  for(i=0;i<m;i++) G.stacks[moved[i].ty.ab]=Math.max(0,(G.stacks[moved[i].ty.ab]||0)-1);
-  G.st=stats();
-  bindPlayer(W);
-  for(i=0;i<m;i++){ var s=moved[i]; G.stacks[s.ty.ab]=(G.stacks[s.ty.ab]||0)+1; s.hp=G.st.segHp; s.moving=true; G.segs.push(s); }
-  G.st=stats(); chipsDirty=true; fightsPeak(W);
-  fightsBiteAt[W.id*fightsN+W.id]=fightsClk[0]; // the swallowed line starts round the winner's head
-  W.stats.taken+=m; W.stats.dmgTo[L.id]=(W.stats.dmgTo[L.id]||0)+m; L.stats.lost+=m;
-  var fb=fightsMap(W.stats,'firstBite'); if(m&&fb[L.id]===undefined) fb[L.id]=G.match.clock;
-  bindPlayer(L); G.deathCause='eaten'; G.deathBy=W.id; royaleDie(); L.stats.hordeAtDeath=m; // royaleDie saw an empty line
+  bindPlayer(A); var ox=G.head.x, oy=G.head.y; G.head.x+=ux*half; G.head.y+=uy*half; resolveHead(G.head,G.F,1/60); fightsTrail(ox,oy,ux,uy);
+  bindPlayer(B); ox=G.head.x; oy=G.head.y; G.head.x-=ux*half; G.head.y-=uy*half; resolveHead(G.head,G.F,1/60); fightsTrail(ox,oy,-ux,-uy);
   bindPlayer(was);
 }
 /* Horde zero: the bound player, at zero for FIGHTS_ZERO_T, dies of whatever took its last zombie. */
@@ -9208,20 +9395,6 @@ function fightsUpdate(dt){
       for(i=0;i<n;i++){ s=segs[i]; dx=s.x-hp.x; dy=s.y-hp.y;
         if(dx<r&&dx>-r&&dy<r&&dy>-r){ d2=dx*dx+dy*dy; if(d2<best){ best=d2; bi=i; } } }
       if(bi>=0){ fightsBiteAt[key]=T; fightsBite(P,Q,bi); } } }
-  // a head on its own line, past the sixth zombie: the head has to be moving and run into it (a zombie in front of it),
-  // across the line (within 45 degrees of square to the way the line runs there) and onto the trail itself, and the zombie has
-  // to be strung out on the trail. Not crossed: zombies of a wide horde hanging off the trail beside the head; zombies on or behind the head; the ones updateMob still parks at the trail's far end because the
-  // trail is too short to hold them (a fresh line, a drop, a teleport); a head running back alongside its own line after a
-  // tight U-turn, or a head knocked back along its own trail by a wall; a head standing or pinned on a wall with its mob bunched round it.
-  for(a=0;a<np;a++){ P=ps[a]; if(fightsOut(P)) continue;
-    key=P.id*N+P.id; if(T-fightsBiteAt[key]<FIGHTS_BITE_GAP) continue;
-    var C=P===G.cur, pst=C?G.st:P.st; if(!pst||!((C?G.headMoved:P.headMoved)>FIGHTS_MOVING*pst.speed*dt)) continue;
-    var pth=C?G.path:P.path, p0=(C?G.pathCut:P.pathCut)<0&&pth.length?pth[0]:null;
-    hp=headOf(P); r=hp.r+SEG_R; segs=fightsSegs(P); n=segs.length; var fx=Math.cos(hp.h), fy=Math.sin(hp.h), wf=Math.min(40,8+n*0.6), ct, sn, off;
-    for(i=FIGHTS_SAFE;i<n;i++){ s=segs[i];
-      // the zombie's place on the trail itself: updateMob hangs the first 160 off it sideways by off*wf (a big horde is 80 px wide)
-      off=i<160?s.off*wf:0; ct=Math.cos(s.tang); sn=Math.sin(s.tang); dx=s.x+sn*off-hp.x; dy=s.y-ct*off-hp.y;
-      if(dx<r&&dx>-r&&dy<r&&dy>-r&&dx*dx+dy*dy<r*r&&dx*fx+dy*fy>0&&!(p0&&s.gx===p0.x&&s.gy===p0.y)&&Math.abs(fx*ct+fy*sn)<FIGHTS_CROSS){ fightsBiteAt[key]=T; fightsSelfCut(P,i); break; } } }
   // horde zero: a living head with no zombies for FIGHTS_ZERO_T on end is out
   for(a=0;a<np;a++){ P=ps[a]; if(fightsOut(P)) continue; if(fightsSegs(P).length){ fightsZeroT[P.id]=0; continue; }
     fightsZeroT[P.id]+=dt; if(fightsZeroT[P.id]<FIGHTS_ZERO_T) continue;
@@ -9235,7 +9408,7 @@ function fightsOnEat(P,h){ var M=fightsHost(); if(!M||M.full) return; fightsTota
 function fightsOnSegLost(P,seg,cause,i){ var M=fightsHost(); if(!M) return;
   if(fightsTotal>0) fightsTotal--; if(M.full&&fightsTotal<M.cap) M.full=false;
   if(P.id>=fightsN) return;
-  var rival=(cause==='bite'||cause==='bounce'||cause==='eaten')&&fightsActor&&fightsActor!==P.id;
+  var rival=(cause==='bite'||cause==='bounce')&&fightsActor&&fightsActor!==P.id;
   fightsLost[P.id]=cause==='ring'?1:rival?2:0; fightsLostBy[P.id]=rival?fightsActor:0; fightsLostAt[P.id]=fightsClk[0]; }
 /* At the cap, a stray that adds a zombie to the map is never made. A cut or a death only turns a mob zombie into a stray
    (removeSeg and royaleDie take it off the line before making its stray), so the count never rises past the running
@@ -9291,8 +9464,8 @@ function ghostsSpawn(P,first){
   var kind=order[kindN%order.length], p=ghostsSpot(F,R), m=spawnMini(F,G.sd,kind,[]);
   if(!m) return false;
   kindN++;
-  var hp=Math.round((60+15*GHOST_STAGE)*ENEMY.mini*(kind==='director'?1.3:1)); // stage 9 strength, never scaled down
-  m.x=m.px=p.x; m.y=m.py=p.y; m.hp=m.max=hp; m.ghost=P; m.awake=true; m.seen=true; m.city=true; m.state='chase'; m.t=0;
+  var hp=Math.round((60+15*GHOST_STAGE)*ENEMY.mini*(kind==='director'?1.3:1)); // stage 9 strength; royaleTuneMini then gives a Manager 65% of it and its weaker swing (owner, 20 Oct); the Champ and the Director keep it all
+  m.x=m.px=p.x; m.y=m.py=p.y; m.hp=m.max=hp; royaleTuneMini(m); m.ghost=P; m.awake=true; m.seen=true; m.city=true; m.state='chase'; m.t=0;
   m.h=m.face=Math.atan2(R.y-p.y,R.x-p.x); m.bites={}; m.gTgt=0;
   P.ghost={kind:kind,m:m,t:0,first:first,cd:0,taken:0};
   M.events.push({k:'ghost',id:P.id,kind:kind});
@@ -9563,6 +9736,755 @@ Royale.ghosts={
   order:function(){ return order; }
 };
 })();
+/* ---------- Parade Royale: bots (lane H; ROYALE.md §11 is the contract) ---------- */
+/* A lobby of two is a match of six. The host plans the bots once at START (plan), every device knows them as players
+   from the start list, and on the host they steer themselves by writing P.input like a guest's network input: one
+   decision per bot ten times a second, a goal kept for one to two seconds so nothing jitters, a road route round the
+   blocks (the city's own junction graph) and two whiskers through navBlocked so no bot grinds on a wall. They want food
+   (strays and the people within 700 px, the unarmed first), keep inside the ring with a margin that grows as it shrinks,
+   run from heads with half as much again of a horde within 400 px, and cut the lines of hordes two thirds their size
+   from the side, never head-on. Small or hurt, they play careful: strays and the unarmed only, wide of armed knots, mini
+   bosses and the hunter. Roadblocks and laser checkpoints are routed round; a fence is crossed only while it stays dark. A dead bot plays its ghost: it steers at the nearest living head, strikes in reach and
+   summons when it can. Same head, speed and start as anyone: a bot only writes input. Every roll is mrand(). */
+(function(){
+var BOTS_KEY='horde_royale_bots', BOTS_DEF=6, BOTS_MIN=2;
+/* A dozen dry, made-up names: nobody real, nothing a filter would blink at, all within netName's A-Z a-z 0-9 space. */
+var BOTS_NAMES=['Clive','Doris','Wet Steve','The Vicar','Nan','Gravy','Mr Shuffles','Old Tom','Kevin Again','Auntie Pat','Big Brenda','Dennis'];
+var BOTS_THINK=0.1, BOTS_COMMIT=1, BOTS_COMMIT_X=1;      // a decision every 0.1 s; a goal is kept 1-2 s
+var BOTS_FOOD_T=4, BOTS_FOOD_CD=10, BOTS_BAD_R=200, BOTS_NEARER=40, BOTS_FOOD_R=700, BOTS_ARMED=450, BOTS_STRAY=60, BOTS_LOSE=900; // food within 700 px; an armed person counts 450 px further off; a stray 60 px nearer
+var BOTS_BIG=1.5, BOTS_FEAR_R=300, BOTS_HUNT_R=650, BOTS_HUNT_KEEP=1.3, BOTS_HEAD_GAP=80, BOTS_SIDE=40, BOTS_SEG_PX=11, BOTS_STILL=20, BOTS_CUT_SLACK=0.15, BOTS_LEAD=0.25, BOTS_LEAD_MAX=2.5, BOTS_BEHIND=0.3, BOTS_SHY=70, BOTS_PANIC=200, BOTS_MINI_R=230, BOTS_MINI_FAR=320, BOTS_LOW=40, BOTS_SMALL=14, BOTS_GUN_R=240, BOTS_GROUP_R=320, BOTS_GROUP=3;
+var BOTS_COMING=60, BOTS_NEAR_R=170, BOTS_HUNT_T=5, BOTS_HUNT_CD=6, BOTS_REFUGE=250, BOTS_FLEE_L=90, BOTS_STALL_T=2.5, BOTS_STALL_D=90;
+var BOTS_CAR_V=60, BOTS_CAR_T=1.2, BOTS_CAR_R=70, BOTS_CAR_LANE=70; // a car's lane is 70 px either side; we look 1.2 s up it
+var BOTS_SEE=320, BOTS_LOOK=0.8, BOTS_MISS=24, BOTS_MISS_S=8, BOTS_OFF=1.3, BOTS_GUARD=140; // head-on: look 0.8 s ahead within 320 px at 10 Hz; between decisions a guard at 140 px every frame
+var BOTS_IN=0.8, BOTS_WHISK=52, BOTS_WA=0.5, BOTS_NUDGE=0.35, BOTS_STUCK=0.8, BOTS_DETOUR=0.7;
+var BOTS_CSS='#rlExtra .rbRow{display:flex;align-items:center;justify-content:center;gap:12px;margin:0 0 4px;color:var(--ink)}'+
+  '#rlExtra .rbBtn{width:44px;height:44px;flex:none;padding:0;font:800 26px/1 var(--font);background:var(--bone2);color:var(--ink);border:3px solid var(--ink);border-radius:3px;box-shadow:3px 3px 0 var(--ink);cursor:pointer}'+
+  '#rlExtra .rbBtn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}#rlExtra .rbBtn:disabled{opacity:.3;box-shadow:none;cursor:default;transform:none}'+
+  '#rlExtra .rbBtn:focus-visible{outline:3px solid var(--amber);outline-offset:2px}'+
+  '#rlExtra .rbFill{min-width:10em;text-align:center;font:400 22px/1.05 var(--display);letter-spacing:1px}'+
+  '#rlExtra .rbN{display:block;margin-top:3px;font:600 11px var(--font);color:var(--muted);text-transform:uppercase;letter-spacing:1px}';
+var ui={show:false,n:1,css:false};
+
+/* ---- the lobby: how many hordes the host fills to, kept on the device ---- */
+function botsFill(){ var v=NaN; try{ v=parseInt(localStorage.getItem(BOTS_KEY),10); }catch(e){} if(!isFinite(v)) v=BOTS_DEF; return Math.max(BOTS_MIN,Math.min(ROYALE_MAX,v)); }
+function botsSetFill(v){ v=Math.max(BOTS_MIN,Math.min(ROYALE_MAX,v|0)); try{ localStorage.setItem(BOTS_KEY,String(v)); }catch(e){} return v; }
+function botsCount(nHumans){ return Math.max(0,Math.min(botsFill(),ROYALE_MAX)-(nHumans|0)); }
+function botsRow(nHumans){
+  var f=botsFill(), b=botsCount(nHumans);
+  return '<div class="rbRow"><button type="button" class="rbBtn" data-rb="-1" aria-label="Fewer hordes"'+(f<=BOTS_MIN?' disabled':'')+'>&minus;</button>'+
+    '<div class="rbFill">FILL TO '+f+' HORDES<span class="rbN">'+(b?b+(b===1?' bot':' bots'):'No bots')+'</span></div>'+
+    '<button type="button" class="rbBtn" data-rb="1" aria-label="More hordes"'+(f>=ROYALE_MAX?' disabled':'')+'>+</button></div>';
+}
+function botsWire(el){
+  if(el._rbWired||!el.addEventListener) return; el._rbWired=true;
+  el.addEventListener('click',function(e){ var t=e&&e.target, d=null;
+    while(t&&t!==el){ d=t.getAttribute?t.getAttribute('data-rb'):null; if(d) break; t=t.parentNode; }
+    if(!d||!t||t.disabled) return; if(e.stopPropagation) e.stopPropagation();
+    Snd.init(); Snd.play('ui'); botsSetFill(botsFill()+(+d)); Royale.bots.lobby(ui.show,ui.n); });
+}
+
+/* ---- the plan: who the bots are, fixed at START ---- */
+/* Which name comes first: the lobby code's letters (net rolled them from the clock), so one lobby gives the same bots on
+   every call and the next lobby a different lot. Without a code, the humans' names. */
+function botsRot(specs){ var N=Royale.net, s=N?String((N.code?N.code():N._s?N._s().code:'')||''):'', h=7, i;
+  if(!s) for(i=0;i<specs.length;i++) s+=String(specs[i].name||'');
+  for(i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%9973; return h%BOTS_NAMES.length; }
+function botsPlan(specs){
+  if(G&&G.match) return []; // a match already running (a host that adopted one) has every player it will have
+  specs=specs||[]; var nh=specs.length, n=botsCount(nh), out=[], used={}, taken={}, maxId=0, rot=botsRot(specs), ni=0, col=0, i, t;
+  for(i=0;i<nh;i++){ used[(specs[i].colour|0)%ROYALE_COLOURS.length]=1; taken[String(specs[i].name||'').toLowerCase()]=1; maxId=Math.max(maxId,specs[i].id|0); }
+  for(i=0;i<n;i++){
+    while(col<ROYALE_COLOURS.length&&used[col]) col++;
+    var c=col<ROYALE_COLOURS.length?col:(maxId+i)%ROYALE_COLOURS.length, nm=''; used[c]=1;
+    for(t=0;t<BOTS_NAMES.length&&!nm;t++){ var cand=BOTS_NAMES[(rot+ni++)%BOTS_NAMES.length]; if(!taken[cand.toLowerCase()]) nm=cand; }
+    if(!nm) nm='Horde '+(maxId+1+i); taken[nm.toLowerCase()]=1;
+    out.push({id:maxId+1+i,name:nm,colour:c,skin:'zombie',bot:true});
+  }
+  return out;
+}
+
+/* ---- reading players: the bound one lives in G ---- */
+function segsOf(P){ return P===G.cur?G.segs:P.segs; }
+function scratch(P){ var S=P.botS; if(S) return S;
+  S=P.botS={t:(P.id*0.037)%BOTS_THINK,mode:'',commitT:0,gx:0,gy:0,food:null,prey:0,wx:0,wy:0,nx:0,ny:0,navT:-1,cx:0,cy:0,sr:0,
+    px:0,py:0,stuckT:0,detourT:0,detourA:0,side:1,a:0,dodgeT:0,need:0,fx:0,fy:0,fd:1e9,foodH:false,ax:0,ay:0,anT:0,boredT:0,huntT:0,huntCd:0,foodT:0,foodD:1e9,lastFood:null,ate:0,badX:0,badY:0,foodBadT:0,dropped:false};
+  return S; }
+function setInput(P,a,go,ba,bb){ var I=P.input; I.x=go?Math.cos(a):0; I.y=go?Math.sin(a):0; I.go=go?1:0; I.a=ba?1:0; I.b=bb?1:0; }
+
+/* Roadblocks, sandbag nests and laser checkpoints close a street, which the city's junction graph (built before they
+   were placed) does not know: the lane keeps its own list of them, padded by a head, and marks the graph's edges they
+   cut, so a route goes round. Rebuilt only when the map's furniture or fence list changes length (a defence built or
+   smashed, crates delivered). A fence is crossed only on foot, by the whiskers, while it stays dark long enough for the
+   whole line to clear it. Teardown drops all of it, so a quitted city is not kept. */
+var nav=botsNavFresh(), BOTS_PAD=16, BOTS_ROUND=30;
+function botsNavFresh(){ return {F:null,sig:-1,N:0,blk:null,nxt:null,q:null,rb:[],fz:[]}; }
+function botsRbHit(x1,y1,x2,y2){ var rb=nav.rb, fz=nav.fz, i; for(i=0;i<rb.length;i++) if(segHitsRect(x1,y1,x2,y2,rb[i])) return true;
+  for(i=0;i<fz.length;i++) if(segHitsRect(x1,y1,x2,y2,fz[i])) return true; return false; }
+function botsNavSync(F){
+  var sig=F.rects.length+100000*(F.fences?F.fences.length:0); if(nav.F===F&&nav.sig===sig) return;
+  nav.F=F; nav.sig=sig; var rb=nav.rb, fz=nav.fz, fs=F.fences||[], i, j; rb.length=0; fz.length=0;
+  for(i=0;i<F.rects.length;i++){ var o=F.rects[i]; if(o.kind==='roadblock'||o.kind==='sandbag') rb.push({x:o.x-BOTS_PAD,y:o.y-BOTS_PAD,w:o.w+2*BOTS_PAD,h:o.h+2*BOTS_PAD}); }
+  for(i=0;i<fs.length;i++){ var fe=fs[i], x0=Math.min(fe.x1,fe.x2), y0=Math.min(fe.y1,fe.y2); fz.push({x:x0-BOTS_PAD,y:y0-BOTS_PAD,w:Math.abs(fe.x2-fe.x1)+2*BOTS_PAD,h:Math.abs(fe.y2-fe.y1)+2*BOTS_PAD,fe:fe}); }
+  if(!F.nav) return; var Ns=F.nav.nodes, Es=F.nav.edges, N=Ns.length;
+  if(nav.N!==N){ nav.N=N; nav.blk=new Uint8Array(N*N); nav.nxt=new Int16Array(N); nav.q=new Int16Array(N); } else nav.blk.fill(0);
+  if(rb.length||fz.length) for(i=0;i<N;i++) for(j=0;j<Es[i].length;j++){ var v=Es[i][j]; if(v>i&&botsRbHit(Ns[i].x,Ns[i].y,Ns[v].x,Ns[v].y)){ nav.blk[i*N+v]=1; nav.blk[v*N+i]=1; } }
+}
+/* A live fence across (x1,y1)-(x2,y2), or a dark one that lights before `need` seconds are up (the line still in it). */
+function botsFenceBad(x1,y1,x2,y2,need){ var fz=nav.fz, i; for(i=0;i<fz.length;i++){ if(!segHitsRect(x1,y1,x2,y2,fz[i])) continue;
+  var fe=fz[i].fe, t=((G.stageT+fe.phase)%fe.period+fe.period)%fe.period; if(t<fe.on||fe.period-t<need) return true; } return false; }
+function botsSolid(F,x1,y1,x2,y2){ return solidHit(F,x1,y1,x2,y2)||botsRbHit(x1,y1,x2,y2); }
+/* The nearest graph node a head at (x,y) can walk straight to (cityNodeNear's rule, roadblocks counted). */
+function botsNode(F,x,y){ var N=F.nav.nodes, best=-1, bd=1e9, i, d; for(i=0;i<N.length;i++){ d=Math.abs(N[i].x-x)+Math.abs(N[i].y-y); if(d<bd&&d<900&&!botsSolid(F,x,y,N[i].x,N[i].y)){ bd=d; best=i; } } return best; }
+/* Every node's next hop towards node b over the edges nothing closes (a breadth-first walk back from b; -1: no way). */
+function botsBfs(b){ var Es=nav.F.nav.edges, N=nav.N, nx=nav.nxt, q=nav.q, h=0, t=0, i, u, v; for(i=0;i<N;i++) nx[i]=-1;
+  nx[b]=b; q[t++]=b; while(h<t){ u=q[h++]; var eu=Es[u]; for(i=0;i<eu.length;i++){ v=eu[i]; if(nx[v]>=0||nav.blk[u*N+v]) continue; nx[v]=u; q[t++]=v; } } }
+/* The graph node nearest (x,y) inside the safe circle, else -1: a goal any head can reach. */
+function botsSafeNode(F,S,x,y){ var N=F.nav?F.nav.nodes:null, best=-1, bd=1e18, i, d; if(!N) return -1;
+  for(i=0;i<N.length;i++){ if(!inSafe(S,N[i].x,N[i].y)) continue; d=(N[i].x-x)*(N[i].x-x)+(N[i].y-y)*(N[i].y-y); if(d<bd){ bd=d; best=i; } } return best; }
+/* Where to walk next: straight at the goal when nothing solid (no roadblock, no checkpoint) is between, else the next node
+   of the city's junction graph round whatever is closed, the pick kept 0.4 s. Writes S.wx, S.wy; nothing allocated. */
+function botsWay(F,S,x,y,tx,ty){
+  S.wx=tx; S.wy=ty; if(!F.nav) return; botsNavSync(F);
+  if(!botsSolid(F,x,y,tx,ty)){ S.navT=-1; return; }
+  if(S.navT>G.t&&Math.hypot(S.nx-x,S.ny-y)>24){ S.wx=S.nx; S.wy=S.ny; return; }
+  var N=F.nav.nodes, a=botsNode(F,x,y), b=a<0?-1:botsNode(F,tx,ty), w=-1;
+  if(a>=0){ if(b<0) w=a; else if(a!==b){ botsBfs(b); var n1=nav.nxt[a]; if(n1<0) w=a; else { w=Math.hypot(N[a].x-x,N[a].y-y)<30?n1:a; if(!botsSolid(F,x,y,N[n1].x,N[n1].y)) w=n1; } } }
+  if(w>=0){ S.wx=N[w].x; S.wy=N[w].y; }
+  else botsRound(F,S,x,y,tx,ty); // one graph node serves both ends (an open plaza): walk round the end of whatever closes the way
+  S.nx=S.wx; S.ny=S.wy; S.navT=G.t+0.4;
+}
+/* Round the end: the first roadblock, nest or fence on the straight way, passed by whichever of its corners (stood off
+   30 px) makes the shorter walk. Writes S.wx, S.wy when one helps. */
+function botsRound(F,S,x,y,tx,ty){
+  var i, best=1e18, r=null, rb=nav.rb, fz=nav.fz;
+  for(i=0;i<rb.length&&!r;i++) if(segHitsRect(x,y,tx,ty,rb[i])) r=rb[i];
+  for(i=0;i<fz.length&&!r;i++) if(segHitsRect(x,y,tx,ty,fz[i])) r=fz[i];
+  if(!r) return;
+  for(i=0;i<4;i++){ var cx=i&1?r.x+r.w+BOTS_ROUND:r.x-BOTS_ROUND, cy=i&2?r.y+r.h+BOTS_ROUND:r.y-BOTS_ROUND;
+    if(solidHit(F,x,y,cx,cy)||navBlocked(F,cx,cy,HEAD_R)) continue; var d=Math.hypot(cx-x,cy-y)+Math.hypot(tx-cx,ty-cy); if(d<best){ best=d; S.wx=cx; S.wy=cy; } }
+}
+/* Is the way from (x,y) to (px,py) shut for a body of radius r: furniture, walls, fire (navBlocked) and, for a living
+   line (need > 0), a fence it could not clear in time. */
+function botsProbe(F,x,y,px,py,r,need){ return navBlocked(F,px,py,r)||(need>0&&botsFenceBad(x,y,px,py,need)); }
+/* Two whiskers either side of the way ahead and one down the middle: a whisker on something nudges the bot off it; the
+   middle one on something turns it to the first clear heading, on the side it last chose, so it does not dither. */
+function botsWhisk(S,x,y,r,a,L,need){
+  if(x<r+L||y<r+L||x>G.F.w-r-L||y>G.F.h-r-L) return a; // at the map's edge (a ghost arriving outside the ring) every whisker reads shut: just go
+  var F=G.F, f=botsProbe(F,x,y,x+Math.cos(a)*L,y+Math.sin(a)*L,r,need), l=botsProbe(F,x,y,x+Math.cos(a-BOTS_WA)*L,y+Math.sin(a-BOTS_WA)*L,r,need),
+    rt=botsProbe(F,x,y,x+Math.cos(a+BOTS_WA)*L,y+Math.sin(a+BOTS_WA)*L,r,need), k, b, side;
+  if(!f){ if(l&&!rt) return a+BOTS_NUDGE; if(rt&&!l) return a-BOTS_NUDGE; return a; }
+  side=l&&!rt?1:rt&&!l?-1:S.side;
+  for(k=1;k<=5;k++){ b=a+side*k*0.55; if(!botsProbe(F,x,y,x+Math.cos(b)*L,y+Math.sin(b)*L,r,need)){ S.side=side; return b; }
+    b=a-side*k*0.55; if(!botsProbe(F,x,y,x+Math.cos(b)*L,y+Math.sin(b)*L,r,need)){ S.side=-side; return b; } }
+  return a+Math.PI;
+}
+/* Stuck: barely moved since the last decision for most of a second, so take a detour to one side for a moment. */
+function botsStuck(S,x,y,dt){
+  var moved=Math.hypot(x-S.px,y-S.py); S.px=x; S.py=y; S.stuckT=moved<5?S.stuckT+dt:0; S.detourT-=dt;
+  if(S.stuckT>BOTS_STUCK){ S.stuckT=0; S.side=mrand()<0.5?-1:1; S.detourA=S.a+S.side*(1.3+0.7*mrand()); S.detourT=BOTS_DETOUR; }
+}
+
+/* A stall: in 2.5 s the head has not got 90 px from where it was (dithering between a threat and a wall, say). Drop the
+   goal, ignore heads that are not close for a moment, and take the sideways detour. */
+function botsStall(S,x,y,dt){
+  S.boredT-=dt; S.anT-=dt; if(S.anT>0) return;
+  if(S.anT>-1&&Math.hypot(x-S.ax,y-S.ay)<BOTS_STALL_D){ S.boredT=BOTS_STALL_T; S.commitT=0; S.side=-S.side; S.detourA=S.a+S.side*(1.3+0.7*mrand()); S.detourT=BOTS_DETOUR; }
+  S.ax=x; S.ay=y; S.anT=BOTS_STALL_T; }
+/* The way out: of twelve headings, the one most nearly along (ux,uy) whose first 90 px are clear. */
+function botsFleeDir(x,y,r,ux,uy){ var F=G.F, best=-2, ba=Math.atan2(uy,ux), k, a, c, s, sc;
+  for(k=0;k<12;k++){ a=k*TAU/12; c=Math.cos(a); s=Math.sin(a); sc=c*ux+s*uy; if(sc<=best) continue;
+    if(navBlocked(F,x+c*BOTS_FLEE_L,y+s*BOTS_FLEE_L,r)||solidHit(F,x,y,x+c*BOTS_FLEE_L,y+s*BOTS_FLEE_L)) continue; best=sc; ba=a; }
+  return ba; }
+
+/* The ring: once a target circle is published the bot plans for it, else for the circle it stands in. The margin is
+   70 px on the full map and grows as the circle shrinks (about 170 px at a quarter of it), never past half the radius. */
+function botsMargin(r){ return r<=0?0:Math.min(r*0.45,70+150*(1-Math.min(1,r/3300))); }
+function botsSafe(S){ var R=G.match.ring, warn=R.tr<R.r-0.5, cr=warn?R.tr:R.r;
+  S.cx=warn?R.tx:R.x; S.cy=warn?R.ty:R.y; S.sr=Math.max(0,cr-botsMargin(cr)); }
+/* Goals (food, prey, a corner to wander to) only inside four fifths of the safe circle: the same line that ends the run
+   back inside, so a bot never chases its dinner back out to the edge with its tail in the fire. */
+function inSafe(S,x,y){ var dx=x-S.cx, dy=y-S.cy, r=S.sr*BOTS_IN; return dx*dx+dy*dy<=r*r; }
+/* Inside a shop or courtyard whose gates are shut: not food for now. */
+function lockedIn(x,y){ var Rs=G.F.refuges||[], i; for(i=0;i<Rs.length;i++) if(Rs[i].shut&&inRect(x,y,Rs[i].inside)) return true; return false; }
+function armedH(o){ return !!(o.arm||(o.ty&&o.ty.hostile)); }
+
+/* Food: the best of the strays anyone may collect and the people within reach inside the safe circle. Strays come first,
+   the unarmed next; a small or hurt horde leaves the armed alone. */
+function botsFood(S,x,y,careful){
+  var best=null, bs=1e9, i, o, d, s, hs=G.humans, ss=G.strays, R2=BOTS_FOOD_R*BOTS_FOOD_R;
+  for(i=0;i<ss.length;i++){ o=ss[i]; if(o.dead||o.hostile||o.joinT>0||botsBad(S,o)) continue; d=(o.x-x)*(o.x-x)+(o.y-y)*(o.y-y); if(d>R2) continue;
+    s=Math.sqrt(d)-BOTS_STRAY; if(s<bs&&inSafe(S,o.x,o.y)&&!lockedIn(o.x,o.y)){ bs=s; best=o; S.foodH=false; } }
+  for(i=0;i<hs.length;i++){ o=hs[i]; if(o.dead||botsBad(S,o)) continue; d=(o.x-x)*(o.x-x)+(o.y-y)*(o.y-y); if(d>R2) continue;
+    var armed=armedH(o); if(armed&&careful) continue;
+    s=Math.sqrt(d)+(armed?BOTS_ARMED:0)+(o.refuge?BOTS_REFUGE:0); if(s<bs&&inSafe(S,o.x,o.y)&&!lockedIn(o.x,o.y)){ bs=s; best=o; S.foodH=true; } }
+  return best;
+}
+function botsBad(S,o){ return S.foodBadT>0&&Math.abs(o.x-S.badX)<BOTS_BAD_R&&Math.abs(o.y-S.badY)<BOTS_BAD_R; }
+function foodOk(S,o,x,y,careful){ return !!o&&!o.dead&&!(o.hostile)&&!(careful&&S.foodH&&armedH(o))&&Math.hypot(o.x-x,o.y-y)<BOTS_LOSE&&inSafe(S,o.x,o.y); }
+/* Prey: the nearest living rival within reach whose line is two thirds of ours or less, with something to cut. */
+function botsPrey(P,S,x,y,n){
+  var ps=G.players, best=null, bd=BOTS_HUNT_R, i;
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q===P||!Q.alive) continue; var m=segsOf(Q).length; if(m<3||n<BOTS_BIG*m) continue;
+    var h=headOf(Q), d=Math.hypot(h.x-x,h.y-y); if(d<bd&&inSafe(S,h.x,h.y)){ bd=d; best=Q; } }
+  return best;
+}
+/* The cut: the nearest zombie of the prey's line from the third one back that is clear of its head, nearer to us than its
+   head (so the bot comes in behind or from the side) and still there when we arrive. Writes S.gx, S.gy (a fixed spot,
+   kept while we go for it); false when there is nothing to aim at. */
+function botsCut(Q,S,x,y,sp){
+  var sg=segsOf(Q), n=sg.length, h=headOf(Q), bi=-1, hd2=(h.x-x)*(h.x-x)+(h.y-y)*(h.y-y), lim=Math.sqrt(hd2)-BOTS_SIDE, bd=lim>0?lim*lim:0,
+    v=Math.hypot(h.vx||0,h.vy||0), i, z, d;
+  for(i=2;i<n;i++){ z=sg[i]; if((z.x-h.x)*(z.x-h.x)+(z.y-h.y)*(z.y-h.y)<BOTS_HEAD_GAP*BOTS_HEAD_GAP) continue; d=(z.x-x)*(z.x-x)+(z.y-y)*(z.y-y); if(d>=bd) continue;
+    // the line walks its own trail, so the spot a zombie stands on stays covered until the tail has passed it: only a spot
+    // we can reach before then is worth going for
+    if(v>BOTS_STILL&&Math.sqrt(d)/sp>(n-1-i)*BOTS_SEG_PX/v-BOTS_CUT_SLACK) continue;
+    bd=d; bi=i; }
+  var bt=bi>=0?Math.sqrt(bd)/sp:1e9, T, px, py, ta, cov=(n-1)*BOTS_SEG_PX/(v||1);
+  if(bi>=0){ S.gx=sg[bi].x; S.gy=sg[bi].y; }
+  // or a spot the head is about to walk over, reached just after it has passed (never before: that would be head-on)
+  if(v>BOTS_STILL&&n>=4) for(T=BOTS_LEAD;T<=BOTS_LEAD_MAX;T+=BOTS_LEAD){ px=h.x+(h.vx||0)*T; py=h.y+(h.vy||0)*T; ta=Math.hypot(px-x,py-y)/sp;
+    if(ta>=T+BOTS_BEHIND&&ta<=T+cov-BOTS_CUT_SLACK&&ta<bt&&!navBlocked(G.F,px,py,HEAD_R)){ bt=ta; S.gx=px; S.gy=py; bi=0; } }
+  return bi>=0;
+}
+function botsPush(S,x,y,ox,oy,R){ var dx=x-ox, dy=y-oy, d=Math.hypot(dx,dy); if(d>=R) return false; var w=(R-d)/R/(d||1); S.fx+=dx*w; S.fy+=dy*w; return true; }
+/* Fear, as a careful player feels it: heads with half as much again of a horde within 400 px; mini bosses, ghosts and
+   the hunter close by (from further off with a small or hurt horde); a knot of three or more armed people; and, small
+   or hurt, anyone armed within 240 px and any head at all coming at us within 170 px; a moving car about to arrive. Writes the way out into S.fx, S.fy (unnormalised); false when nothing is close. */
+function botsFear(P,S,x,y,n,careful){
+  var ps=G.players, ms=G.minis||[], hs=G.humans, any=false, i, d, mr=careful?BOTS_MINI_FAR:BOTS_MINI_R, gn=0, gx=0, gy=0; S.fx=0; S.fy=0; S.fd=1e9;
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q===P||!Q.alive) continue; var big=segsOf(Q).length>=BOTS_BIG*Math.max(1,n);
+    var h=headOf(Q), hx=x-h.x, hy=y-h.y, hl=Math.hypot(hx,hy)||1, toward=((h.vx||0)*hx+(h.vy||0)*hy)/hl>BOTS_COMING; // coming this way, or merely near
+    if(!big){ if(careful&&toward&&!(S.boredT>0)&&botsPush(S,x,y,h.x,h.y,BOTS_NEAR_R)) any=true; continue; } // small: any head coming at us can cut us to nothing
+    if(S.boredT>0&&hl>BOTS_PANIC) continue; // a standoff that went nowhere: get on with eating unless it is close
+    if(botsPush(S,x,y,h.x,h.y,toward?BOTS_FEAR_R:BOTS_NEAR_R)){ any=true; if(hl<S.fd) S.fd=hl; } }
+  for(i=0;i<ms.length;i++){ var m=ms[i]; if(!m.dead&&botsPush(S,x,y,m.x,m.y,mr)) any=true; }
+  var hn=G.hunter; if(hn&&!hn.dead&&hn.x!==undefined&&botsPush(S,x,y,hn.x,hn.y,mr+100)) any=true;
+  for(i=0;i<hs.length;i++){ var o=hs[i]; if(o.dead||!armedH(o)) continue; var dx=o.x-x, dy=o.y-y; if(dx*dx+dy*dy>=BOTS_GROUP_R*BOTS_GROUP_R) continue;
+    gn++; gx+=o.x; gy+=o.y; if(careful&&botsPush(S,x,y,o.x,o.y,BOTS_GUN_R)) any=true; }
+  if(gn>=BOTS_GROUP&&botsPush(S,x,y,gx/gn,gy/gn,BOTS_GROUP_R)) any=true;
+  // cars (lane J's public list): in the lane of one driving at us, step sideways out of it (running ahead of a car that is
+  // faster than a head is no escape); close by its side, just keep off
+  var cs=Royale.cars&&Royale.cars.list?Royale.cars.list():null;
+  if(cs) for(i=0;i<cs.length;i++){ var c=cs[i]; if(c.st!==0||!(c.v>BOTS_CAR_V)) continue;
+    var cux=Math.cos(c.h), cuy=Math.sin(c.h), rx=x-c.x, ry=y-c.y, ahead=rx*cux+ry*cuy, lat=ry*cux-rx*cuy;
+    if(ahead>-BOTS_CAR_LANE&&ahead<c.v*BOTS_CAR_T&&Math.abs(lat)<BOTS_CAR_LANE){ var sd=lat>=0?1:-1, cw=(BOTS_CAR_LANE-Math.abs(lat))/BOTS_CAR_LANE+0.3; S.fx-=cuy*sd*cw; S.fy+=cux*sd*cw; any=true; }
+    else if(botsPush(S,x,y,c.x,c.y,BOTS_CAR_R)) any=true; }
+  return any;
+}
+function commit(S,mode){ S.mode=mode; S.commitT=BOTS_COMMIT+mrand()*BOTS_COMMIT_X; }
+/* Never head-on: the heading is turned off any rival head it would meet in the next 0.8 s at the closing speed (both
+   heads' motion), and off any head close in front even when standing. */
+function botsDodge(P,S,x,y,r,n,a,sp){
+  var ps=G.players, i, vx=Math.cos(a)*sp, vy=Math.sin(a)*sp;
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q===P||!Q.alive) continue; var h=headOf(Q), rx=h.x-x, ry=h.y-y, d=Math.hypot(rx,ry); if(d>BOTS_SEE) continue;
+    var wx=(h.vx||0)-vx, wy=(h.vy||0)-vy, w2=wx*wx+wy*wy, t=w2>1?Math.max(0,Math.min(BOTS_LOOK,-(rx*wx+ry*wy)/w2)):0, mx=rx+wx*t, my=ry+wy*t,
+      big=segsOf(Q).length>=n, gap=(big?BOTS_PANIC:BOTS_SHY)+r;
+    if(Math.hypot(mx,my)<r+(h.r||HEAD_R)+(big?BOTS_MISS:BOTS_MISS_S)||d<gap){ var px=rx+(h.vx||0)*t, py=ry+(h.vy||0)*t, off=angNorm(Math.atan2(py,px)-a);
+      if(Math.abs(off)<BOTS_OFF) a-=(off>=0?1:-1)*(BOTS_OFF-Math.abs(off)); } }
+  return a;
+}
+
+/* One decision for a living bot: the goal (S.gx, S.gy) and the heading that gets there. */
+function botsThink(P,S,dt){
+  var M=G.match, F=G.F, R=M.ring, hd=headOf(P), x=hd.x, y=hd.y, n=segsOf(P).length, st=P===G.cur?G.st:P.st,
+    careful=(P===G.cur?G.hp:P.hp)<BOTS_LOW||n<BOTS_SMALL, sp=st&&st.speed?st.speed:170;
+  botsSafe(S); S.commitT-=dt; S.foodBadT-=dt;
+  // seconds after food without a bite or getting any nearer
+  if(P.stats.eaten!==S.ate){ S.ate=P.stats.eaten; S.foodT=0; S.foodD=1e9; }
+  else if(S.mode==='food'){ var fd=Math.hypot(S.gx-x,S.gy-y); if(fd<S.foodD-BOTS_NEARER){ S.foodD=fd; S.foodT=0; } else S.foodT+=dt; } else { S.foodT=0; S.foodD=1e9; } botsStuck(S,x,y,dt); botsStall(S,x,y,dt); S.need=(n*17+80)/sp+0.4; // seconds the whole line needs to clear a fence
+  var dc=Math.hypot(x-S.cx,y-S.cy), outNow=Math.hypot(x-R.x,y-R.y)>R.r-hd.r;
+  if(outNow||dc>S.sr||(S.mode==='ring'&&dc>S.sr*BOTS_IN&&S.sr>40)){ // the ring first: back inside, to a point well within the safe circle
+    if(S.mode!=='ring'||S.commitT<=0){ var k=dc>1?Math.max(0,S.sr*0.6)/dc:0, rx=S.cx+(x-S.cx)*k, ry=S.cy+(y-S.cy)*k, rn=botsSafeNode(F,S,rx,ry);
+      if(rn>=0&&Math.hypot(F.nav.nodes[rn].x-rx,F.nav.nodes[rn].y-ry)<S.sr){ rx=F.nav.nodes[rn].x; ry=F.nav.nodes[rn].y; } // a junction or a door inside: somewhere a head can stand
+      S.gx=rx; S.gy=ry; commit(S,'ring'); }
+    S.food=null; S.prey=0; }
+  else if(botsFear(P,S,x,y,n,careful)){ // away from what is bigger, bent inwards near the edge of the safe circle
+    var l=Math.hypot(S.fx,S.fy)||1, ux=S.fx/l, uy=S.fy/l; if(dc>S.sr-160&&dc>1&&S.fd>BOTS_PANIC){ ux+=(S.cx-x)/dc*0.9; uy+=(S.cy-y)/dc*0.9; } // a big head right behind outranks the edge
+    var fa=botsFleeDir(x,y,hd.r,ux,uy); S.gx=x+Math.cos(fa)*BOTS_FLEE_L; S.gy=y+Math.sin(fa)*BOTS_FLEE_L; if(S.mode!=='flee') commit(S,'flee'); S.food=null; S.prey=0; }
+  else {
+    var Q=S.prey?playerById(S.prey):null;
+    if(S.mode==='hunt'){ S.huntT+=dt; if(S.huntT>BOTS_HUNT_T){ S.huntCd=BOTS_HUNT_CD; S.commitT=0; } } else S.huntT=0; // a chase that has not cut in 5 s is a chase lost
+    S.huntCd-=dt;
+    if(S.mode==='hunt'&&S.commitT>0&&Q&&Q.alive&&n>=BOTS_HUNT_KEEP*segsOf(Q).length&&(Math.hypot(S.gx-x,S.gy-y)>hd.r||botsCut(Q,S,x,y,sp))){ /* keep going for the spot (it stays on the line), then the next */ }
+    else if(S.mode==='food'&&S.commitT>0&&foodOk(S,S.food,x,y,careful)&&S.foodT<BOTS_FOOD_T){ S.gx=S.food.x; S.gy=S.food.y; }
+    else if(S.mode==='roam'&&S.commitT>0&&Math.hypot(S.gx-x,S.gy-y)>80&&inSafe(S,S.gx,S.gy)){ /* keep going */ }
+    else { if(S.mode==='food'&&S.foodT>=BOTS_FOOD_T){ S.badX=S.gx; S.badY=S.gy; S.foodBadT=BOTS_FOOD_CD; S.foodT=0; } // food there we cannot get to: leave that spot a while
+      S.food=null; S.prey=0; Q=careful||S.huntCd>0?null:botsPrey(P,S,x,y,n);
+      if(Q&&botsCut(Q,S,x,y,sp)){ if(S.mode!=='hunt') S.huntT=0; S.prey=Q.id; commit(S,'hunt'); }
+      else { var o=botsFood(S,x,y,careful);
+        if(o){ if(o!==S.lastFood){ S.lastFood=o; S.foodD=1e9; S.foodT=0; } S.food=o; S.gx=o.x; S.gy=o.y; commit(S,'food'); }
+        else { var a0=mrand()*TAU, r0=Math.sqrt(mrand())*S.sr*0.6, qx=S.cx+Math.cos(a0)*r0, qy=S.cy+Math.sin(a0)*r0, qn=botsSafeNode(F,S,qx,qy); // wander to a street corner inside the circle
+          if(qn>=0){ qx=F.nav.nodes[qn].x; qy=F.nav.nodes[qn].y; } S.gx=qx; S.gy=qy; commit(S,'roam'); } } }
+  }
+  if(S.mode==='flee'){ S.wx=S.gx; S.wy=S.gy; } else botsWay(F,S,x,y,S.gx,S.gy); // a flight takes the clearest way out, never a route back past the threat
+  var a=botsDodge(P,S,x,y,hd.r,n,Math.atan2(S.wy-y,S.wx-x),sp);
+  if(S.detourT>0) a=S.detourA;
+  var dw=Math.hypot(S.wx-x,S.wy-y);
+  a=botsWhisk(S,x,y,hd.r,a,Math.max(26,Math.min(BOTS_WHISK,dw+hd.r)),S.need);
+  S.a=a; if(!(S.dodgeT>0)) setInput(P,a,true,0,0);
+}
+/* Between decisions, every frame: a rival head about to meet this one (within reach in the next 0.3 s, in front) turns
+   it away at once, so two heads closing at twice a head's speed do not meet between two decisions. */
+function botsGuard(P,S,dt){
+  S.dodgeT-=dt; var hd=headOf(P), ps=G.players, i, c=Math.cos(hd.h), s=Math.sin(hd.h), sp=(P===G.cur?G.st:P.st), v=sp&&sp.speed?sp.speed:170;
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q===P||!Q.alive) continue; var h=headOf(Q), rx=h.x-hd.x, ry=h.y-hd.y, d=Math.hypot(rx,ry); if(d>BOTS_GUARD) continue;
+    var cl=-((h.vx||0)-c*v)*rx/(d||1)-((h.vy||0)-s*v)*ry/(d||1); // closing speed
+    if(d-hd.r-(h.r||HEAD_R)<Math.max(8,cl*0.3)&&(rx*c+ry*s)>0){ var off=angNorm(Math.atan2(ry,rx)-hd.h), a=hd.h-(off>=0?1:-1)*1.6; S.a=a; S.dodgeT=0.25; setInput(P,a,true,0,0); return; } }
+}
+
+/* A dead bot with a ghost on the map: at the nearest living head, A when it is in this boss's reach (lane E's own reach
+   rule), B whenever the summon is ready. It finds its way like a living bot: the route, the whiskers with the boss's own
+   size (furniture counted) and the sideways detour when it stops moving. */
+function botsGhost(P,S,dt){
+  var g=P.ghost, m=g&&g.m; if(!m||m.dead){ setInput(P,0,false,0,0); return; }
+  var ps=G.players, best=null, bd=1e18, i, h, d;
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(!Q.alive) continue; h=headOf(Q); d=(h.x-m.x)*(h.x-m.x)+(h.y-m.y)*(h.y-m.y); if(d<bd){ bd=d; best=Q; } }
+  if(!best){ setInput(P,0,false,0,0); return; }
+  h=headOf(best); d=Math.sqrt(bd);
+  var reach=m.kind==='manager'?d<m.r+h.r+40:m.kind==='champ'?d<120:(d<300&&!lineBlocked(G.F,m.x,m.y,h.x,h.y));
+  if(m.state==='windup'||m.state==='recover'){ S.px=m.x; S.py=m.y; S.stuckT=0; } else botsStuck(S,m.x,m.y,dt); // a boss standing to strike is not stuck
+  botsWay(G.F,S,m.x,m.y,h.x,h.y);
+  var a=Math.atan2(S.wy-m.y,S.wx-m.x); if(S.detourT>0) a=S.detourA;
+  var dw=Math.hypot(S.wx-m.x,S.wy-m.y); if(dw>m.r+h.r+4) a=botsWhisk(S,m.x,m.y,m.r,a,Math.max(m.r+12,Math.min(m.r+40,dw)),0);
+  S.a=a; setInput(P,a,true,reach,!(g.cd>0));
+}
+
+/* The drop: each bot asks lane C for a random spot inside the ring, so bots spread as people do. */
+function botsDrop(M){
+  var ps=G.players, R=M.ring, i;
+  for(i=0;i<ps.length;i++){ var P=ps[i]; if(!P.bot||!P.alive) continue; var S=scratch(P); if(S.dropped) continue; S.dropped=true;
+    var a=mrand()*TAU, d=Math.sqrt(mrand())*Math.max(0,R.r-400); Royale.match.pickDrop(P,R.x+Math.cos(a)*d,R.y+Math.sin(a)*d); }
+}
+
+function botsUpdate(dt){
+  var M=G.match; if(!M||!M.host) return;
+  var ps=G.players, i, P, S;
+  if(M.phase==='drop'){ if(Royale.match&&Royale.match.pickDrop) botsDrop(M); return; }
+  if(M.phase!=='play') return;
+  for(i=0;i<ps.length;i++){ P=ps[i]; if(!P.bot) continue; S=scratch(P);
+    if(P.alive) botsGuard(P,S,dt);
+    S.t-=dt; if(S.t>0) continue; var step=BOTS_THINK-S.t; S.t+=BOTS_THINK; if(S.t<0) S.t=0;
+    if(P.alive) botsThink(P,S,step); else botsGhost(P,S,step); }
+}
+
+Royale.bots={
+  plan:botsPlan,
+  /* Net calls this on every lobby render: the host's own lobby gets the one row, everyone else an empty slot. */
+  lobby:function(show,nHumans){
+    ui.show=!!show; ui.n=nHumans|0;
+    var el=typeof document!=='undefined'?$('rlExtra'):null; if(!el) return;
+    if(!show){ if(el._rb){ el._rb=''; el.innerHTML=''; } return; }
+    if(!ui.css){ ui.css=true; Royale.mount('royaleBots','',BOTS_CSS); }
+    botsWire(el);
+    var html=botsRow(ui.n); if(el._rb!==html){ el._rb=html; el.innerHTML=html; }
+  },
+  update:botsUpdate,
+  /* Quitting or a new match: let go of the city (its graph flags, the closed streets, the fences). Bot scratch lives on
+     the player records, which go with the match. */
+  teardown:function(){ nav=botsNavFresh(); },
+  fill:botsFill, setFill:botsSetFill, count:botsCount,
+  NAMES:BOTS_NAMES,
+  _nav:function(){ return nav; }, _fence:function(x1,y1,x2,y2,need){ botsNavSync(G.F); return botsFenceBad(x1,y1,x2,y2,need); }
+};
+})();
+/* ---------- Parade Royale: cars (lane J; ROYALE.md §13 is the contract) ---------- */
+/* Owner, 20 Oct: "make people drive cars that can bump into you". The host keeps a few cars cruising the city's streets
+   from 0:15 of play: junction to junction on the street grid, on the left, round wrecks, braking for people. A car that
+   hits a head at speed knocks it 70 px aside for 10 HP and stalls; a horde that mobs a stalled car (12 zombies within
+   70 px) has the driver out and running, and the car stays parked, empty, for 12 s. Cars never kill a zombie: anything
+   inside a car's body is pushed out sideways. Guests draw what the host packs, interpolated between snapshots.
+   The host's per-frame work allocates nothing: the numbers live on the car objects. */
+var CARS_FROM=15,          // seconds of play before the first car
+    CARS_MAX=8,            // CARS_N = min(CARS_MAX, 3 + floor(players/2))
+    CARS_BACK=20,          // seconds before a car that left play comes back elsewhere
+    CARS_CRUISE=240, CARS_TURN=110, CARS_CREEP=26, CARS_ACC=260, CARS_BRAKE=760,   // px/s and px/s²
+    CARS_L=62, CARS_W=32,  // body, px
+    CARS_LANE=28,          // the lane's offset from the street's centre line (on the left)
+    CARS_BUMP_V=60,        // a car slower than this blocks a head and never bumps it
+    CARS_KNOCK=70, CARS_KNOCK_STEP=6, CARS_HP=10, CARS_GAP=1.5, CARS_STALL=1.5,
+    CARS_MOB=12, CARS_MOB_R=70, CARS_PARK=12, CARS_FADE=1,
+    CARS_SLIDE=3,          // px a frame a zombie or person against a car's end is moved round the nearer corner
+    CARS_PERSON=40,        // brakes for a person this close ahead of the bumper
+    CARS_WAIT=1,           // seconds the way is blocked before the car turns back
+    CARS_PATIENCE=1.5,     // seconds behind a person before it creeps on (people step aside)
+    CARS_FAR=2600,         // further than this from every living head for 3 s: the car leaves play
+    CARS_SPIN=2.6,         // rad/s while turning back
+    CARS_LOOK=0.1,         // seconds between looks at the map ahead
+    CARS_STUCK=6,          // seconds without getting 20 px anywhere: the car leaves play
+    CARS_CULL=1500,        // pack radius per guest
+    CARS_GRID=11,          // junctions 1..11 each way: the inner street grid
+    CARS_NAV_WORK=40,      // street-graph samples a frame while it builds (each up to two navBlocked): about 1 ms here, 4 on a cheap phone
+    CARS_NAV_MS=2,         // and never more than this many ms of it in one frame (where the clock is real)
+    CARS_VIEW=900,         // half the box round a head that counts as on someone's screen (a desktop shows about 640 x 400 each side)
+    CARS_NEAR=1000;        // a car with no head this close is off every screen: it looks ahead half as often
+var CARS_COLS=['#c0392b','#2980b9','#f1c40f','#ecf0f1','#27ae60','#e67e22'];
+var CARS_PROFS=['intern','accountant','chef','influencer','gymbro','doctor','scientist','it','boxer','yoga','firefighter','receptionist','trainer','labtech','nutritionist','firstaid','hazmat'];
+
+/* Host: carsList (the cars), carsWait (seconds left before each missing car comes back), carsNav (the street graph).
+   Guest: carsG (what the last packs said, with the interpolation ends). carsClk: this device's car clock. */
+var carsM=null, carsList=[], carsWait=[], carsNav=null, carsSeq=0, carsClk=0, carsG=[], carsIv=0.05, carsLastPack=-1, carsKeys=null;
+
+function carsReset(M){ carsM=M; carsList.length=0; carsWait.length=0; carsNav=null; carsSeq=0; carsClk=0; carsG.length=0; carsIv=0.05; carsLastPack=-1; }
+function carsProfKeys(){ return carsKeys||(carsKeys=Object.keys(PROF)); }
+function carsWant(){ return Math.min(CARS_MAX,3+Math.floor((G.players||[]).length/2)); }
+
+/* ----- the street graph: junctions of the inner street grid (the map-edge streets are too narrow for a car), links
+   along every street both lanes can share (one lane may be blocked by a wreck now and then, never both), nothing
+   through the old arena (the open plaza where everyone starts). Built once per match on the host. ----- */
+function carsNavBegin(){ var N=[], A=[], C=[], i, j, n=CARS_GRID, lo=CITY_ARENA, hi=CITY_ARENA*2;
+  for(j=1;j<=n;j++) for(i=1;i<=n;i++){ N.push({x:i*CITY_STEP,y:j*CITY_STEP}); A.push([]); }
+  for(j=1;j<=n;j++) for(i=1;i<=n;i++){ var a=(j-1)*n+(i-1); // every street between neighbouring junctions, none through the old arena
+    if(i<n){ var mx=(i+0.5)*CITY_STEP, my=j*CITY_STEP; if(!(mx>lo&&mx<hi&&my>lo&&my<hi)) C.push(a,a+1); }
+    if(j<n){ var mx2=i*CITY_STEP, my2=(j+0.5)*CITY_STEP; if(!(mx2>lo&&mx2<hi&&my2>lo&&my2<hi)) C.push(a,a+n); } }
+  return {nodes:N,adj:A,edges:[],cand:C,ci:0,s:-1,ready:false}; }
+/* Test the street graph's candidate streets a few samples at a time (the whole grid at once is a 70 ms hitch): `work`
+   samples (each up to two navBlocked) or `ms` milliseconds, whichever comes first; from the drop on, ready long before
+   0:15. A street is kept when, every 10 px along it, at least one lane has room for a car. */
+function carsNavStep(F,V,work,ms){
+  var C=V.cand, N=V.nodes, r=CARS_W/2, w=CARS_LANE, t0=ms?carsNow():0, k=0;
+  while(V.ci<C.length&&k<work){
+    var P=N[C[V.ci]], Q=N[C[V.ci+1]], dx=Q.x-P.x, dy=Q.y-P.y, l=Math.sqrt(dx*dx+dy*dy), ux=dx/l, uy=dy/l, nx=uy, ny=-ux, bad=false;
+    if(V.s<0){ k+=2; bad=segWallHit(F,P.x+nx*w,P.y+ny*w,Q.x+nx*w,Q.y+ny*w)||segWallHit(F,P.x-nx*w,P.y-ny*w,Q.x-nx*w,Q.y-ny*w); V.s=0; }
+    while(!bad&&V.s<=l&&k<work){ var x=P.x+ux*V.s, y=P.y+uy*V.s; k++; if(navBlocked(F,x+nx*w,y+ny*w,r,false)&&navBlocked(F,x-nx*w,y-ny*w,r,false)) bad=true; else V.s+=10; }
+    if(!bad&&V.s<=l) break; // out of budget mid-street: carry on next frame
+    if(!bad){ var a=C[V.ci], b=C[V.ci+1]; V.adj[a].push(b); V.adj[b].push(a); V.edges.push(a,b); }
+    V.ci+=2; V.s=-1;
+    if(ms&&carsNow()-t0>ms) break; }
+  if(V.ci>=C.length) V.ready=true; }
+function carsNow(){ try{ return performance.now(); }catch(e){ return 0; } }
+function carsNavBuild(F){ var V=carsNavBegin(); while(!V.ready) carsNavStep(F,V,1e9,0); return V; }
+/* The next junction after n (arrived from `from`): never straight back unless it is a dead end; inside the ring three
+   times as likely, toward the nearest living head twice as likely (cars cruise where the hordes are). */
+function carsPickW(n,m,ring,hx,hy){ var N=carsNav.nodes, P=N[n], Q=N[m], w=1, dx=Q.x-ring.x, dy=Q.y-ring.y;
+  if(dx*dx+dy*dy<(ring.r-100)*(ring.r-100)) w*=3;
+  if(hx!==null&&(Q.x-hx)*(Q.x-hx)+(Q.y-hy)*(Q.y-hy)<(P.x-hx)*(P.x-hx)+(P.y-hy)*(P.y-hy)) w*=2;
+  return w; }
+function carsPick(n,from){
+  var adj=carsNav.adj[n], ring=G.match.ring, P=carsNav.nodes[n], k, t=0, hx=null, hy=null, Q=nearestPlayer(P.x,P.y,true);
+  if(Q){ var hq=headOf(Q); hx=hq.x; hy=hq.y; }
+  for(k=0;k<adj.length;k++) if(adj[k]!==from) t+=carsPickW(n,adj[k],ring,hx,hy);
+  if(t<=0) return from;
+  var r=mrand()*t; for(k=0;k<adj.length;k++){ if(adj[k]===from) continue; r-=carsPickW(n,adj[k],ring,hx,hy); if(r<=0) return adj[k]; }
+  for(k=adj.length-1;k>=0;k--) if(adj[k]!==from) return adj[k];
+  return from;
+}
+
+/* ----- geometry: a circle against a car's body (a rect 62 × 32 turned to the car's heading). In the car's frame f runs
+   forward and l to the right. ----- */
+function carsSetFrame(c){ c.cs=Math.cos(c.h); c.sn=Math.sin(c.h); }
+/* Body circles r=16 at -15, 0 and +15 along the car: free of every rect, circle and fire on the map? */
+function carsFree(F,x,y,h){ var cs=Math.cos(h), sn=Math.sin(h), r=CARS_W/2;
+  return !navBlocked(F,x,y,r,false)&&!navBlocked(F,x+cs*(CARS_L/2-r),y+sn*(CARS_L/2-r),r,false)&&!navBlocked(F,x-cs*(CARS_L/2-r),y-sn*(CARS_L/2-r),r,false); }
+/* Push the point o (fields x,y) of radius r out of car c. side=true pushes anything inside the body straight out sideways
+   (zombies and people); otherwise out along the shortest way. Returns true if it moved. */
+function carsPush(c,o,r,side){
+  var dx=o.x-c.x, dy=o.y-c.y, hl=CARS_L/2, hw=CARS_W/2;
+  if(dx>hl+r+hw||dx<-hl-r-hw||dy>hl+r+hw||dy<-hl-r-hw) return false;
+  var f=dx*c.cs+dy*c.sn, l=-dx*c.sn+dy*c.cs, cf=f<-hl?-hl:f>hl?hl:f, cl=l<-hw?-hw:l>hw?hw:l, ef=f-cf, el=l-cl, d2=ef*ef+el*el;
+  if(d2>=r*r) return false;
+  if(d2<1e-6){ // the centre is inside the body
+    if(side||hw-Math.abs(l)<=hl-Math.abs(f)) l=(l>=0?1:-1)*(hw+r+0.5); else f=(f>=0?1:-1)*(hl+r+0.5); }
+  else { var d=Math.sqrt(d2), k=(r+0.5)/d; f=cf+ef*k; l=cl+el*k;
+    // against the bonnet or the boot: also a step round the nearer corner, or a zombie walking its trail into the car
+    // end-on would stand there for ever (the mob's own detours only know the map's furniture)
+    if(side&&ef!==0&&l<hw+r&&l>-hw-r){ var m=Math.min(CARS_SLIDE,hw+r-Math.abs(l)); l+=(l>=0?m:-m); } }
+  o.x=c.x+f*c.cs-l*c.sn; o.y=c.y+f*c.sn+l*c.cs; return true;
+}
+/* The distance from (x,y) to car c's body (0 inside). */
+function carsDist(c,x,y){ var dx=x-c.x, dy=y-c.y, f=dx*c.cs+dy*c.sn, l=-dx*c.sn+dy*c.cs, ef=Math.max(0,Math.abs(f)-CARS_L/2), el=Math.max(0,Math.abs(l)-CARS_W/2); return Math.sqrt(ef*ef+el*el); }
+
+/* ----- spawning (host) ----- */
+function carsSpawn(){
+  var Nn=carsNav.nodes, E=carsNav.edges, ring=G.match.ring, F=G.F, P=randomLiving(); if(!P||!E.length) return null;
+  var hp=headOf(P), ps=G.players, t, k;
+  for(t=0;t<40;t++){
+    var e=Math.floor(mrand()*E.length/2)*2, fw=mrand()<0.5, a=fw?E[e]:E[e+1], b=fw?E[e+1]:E[e], A=Nn[a], B=Nn[b];
+    var dx=B.x-A.x, dy=B.y-A.y, len=Math.sqrt(dx*dx+dy*dy), ux=dx/len, uy=dy/len, s=len*(0.25+0.5*mrand());
+    var x=A.x+ux*s+uy*CARS_LANE, y=A.y+uy*s-ux*CARS_LANE, h=Math.atan2(uy,ux), d=Math.hypot(x-hp.x,y-hp.y), near=false;
+    if(d<CARS_VIEW+50||d>CARS_VIEW+900) continue;
+    if(carsSeen(x,y,CARS_L)) continue; // never pops in on anyone's screen
+    if(t<30&&Math.hypot(x-ring.x,y-ring.y)>ring.r-120) continue;
+    for(k=0;k<carsList.length;k++) if(Math.abs(carsList[k].x-x)<160&&Math.abs(carsList[k].y-y)<160){ near=true; break; }
+    if(near||!carsFree(F,x,y,h)) continue;
+    return carsMake(a,b,s); }
+  return null;
+}
+/* Is (x,y), give or take `pad` px, inside any living player's view? The host knows its own screen (W, H); for everyone
+   else a CARS_VIEW box round the head, which covers a phone and a desktop. */
+function carsSeen(x,y,pad){ var ps=G.players, k;
+  for(k=0;k<ps.length;k++){ var P=ps[k]; if(!P.alive) continue; var q=headOf(P), vx=CARS_VIEW, vy=CARS_VIEW;
+    if(P===G.me){ vx=Math.max(vx,W/2+60); vy=Math.max(vy,H/2+60); }
+    if(Math.abs(q.x-x)<vx+pad&&Math.abs(q.y-y)<vy+pad) return true; }
+  return false; }
+/* A car on the street from junction a to junction b, s px along it, in its lane, with a driver of the match's cast. */
+function carsMake(a,b,s){
+  var Nn=carsNav.nodes, A=Nn[a], B=Nn[b], dx=B.x-A.x, dy=B.y-A.y, len=Math.sqrt(dx*dx+dy*dy), ux=dx/len, uy=dy/len, x=A.x+ux*s+uy*CARS_LANE, y=A.y+uy*s-ux*CARS_LANE;
+  var id=++carsSeq, prof=carsProf();
+  var c={id:id,x:x,y:y,h:Math.atan2(uy,ux),v:CARS_CRUISE*0.6,st:0,col:Math.floor(mrand()*CARS_COLS.length),prof:prof,pi:carsProfKeys().indexOf(prof),
+    a:a,b:b,next:-1,lo:CARS_LANE,lw:CARS_LANE,stallT:0,parkT:0,blockT:0,waitT:0,spin:0,spinDir:1,farT:0,probeT:mrand()*CARS_LOOK,blocked:false,nr:true,stuckT:0,sx:x,sy:y,cs:1,sn:0,mob:0,person:false,far:false,fadeT:0,
+    hit:{}}; // player id -> car clock of its last bump on that head (ids are any small int: lobby churn, bots after the humans)
+  c.next=carsPick(b,a); carsSetFrame(c); carsList.push(c); return c;
+}
+/* The driver is one of the match's own people: Rampage's easy crowd before its tough minute, then the city's crowd
+   (rampProf's two pools; cityProf keeps its list inside the function, so CARS_PROFS mirrors it), rolled on mrand(). */
+function carsProf(){ var pool=rampMin()<RAMP_TOUGH_FROM?RAMP_EASY:CARS_PROFS, ok=[], i; for(i=0;i<pool.length;i++) if(PROF[pool[i]]) ok.push(pool[i]);
+  return ok.length?ok[Math.floor(mrand()*ok.length)]:'intern'; }
+function carsKeep(dt){
+  var want=carsWant(), i;
+  for(i=carsWait.length-1;i>=0;i--){ carsWait[i]-=dt; if(carsWait[i]<=0){ if(carsSpawn()) carsWait.splice(i,1); else carsWait[i]=1; } }
+  if(carsList.length+carsWait.length<want) carsSpawn(); // one a frame until the street is full
+}
+function carsGone(i){ carsList.splice(i,1); carsWait.push(CARS_BACK); }
+
+/* ----- driving (host): pure pursuit along the lane, round the corner onto the next street's lane ----- */
+/* The point `d` px along the car's route from where it is now (this street, then the next), `off` px to the route's left
+   (CARS_LANE is the car's own lane, -CARS_LANE the other one), into carsP. Probes follow the route, so a car about to
+   turn looks round the corner, not at whatever stands straight ahead of the junction. */
+var carsP={x:0,y:0};
+function carsAt(c,d,off){
+  var Nn=carsNav.nodes, A=Nn[c.a], B=Nn[c.b], ux=B.x-A.x, uy=B.y-A.y, len=Math.sqrt(ux*ux+uy*uy); ux/=len; uy/=len;
+  var s=(c.x-A.x)*ux+(c.y-A.y)*uy+d;
+  if(s>len&&c.next!==c.a){ var C=Nn[c.next], wx=C.x-B.x, wy=C.y-B.y, wl=Math.sqrt(wx*wx+wy*wy); wx/=wl; wy/=wl; s-=len; carsP.x=B.x+wx*s+wy*off; carsP.y=B.y+wy*s-wx*off; return carsP; }
+  if(s>len) s=len;
+  carsP.x=A.x+ux*s+uy*off; carsP.y=A.y+uy*s-ux*off; return carsP;
+}
+var CARS_PROBE=[14,40,70]; // body-wide probes this far ahead of the bumper, along the route
+function carsAhead(c,F,off){ for(var k=0;k<CARS_PROBE.length;k++){ var p=carsAt(c,CARS_L/2+CARS_PROBE[k],off); if(navBlocked(F,p.x,p.y,CARS_W/2,false)) return true; } return false; }
+function carsLaneFree(c,F,off){ for(var k=-1;k<=3;k++){ var p=carsAt(c,k*CARS_L/3,off); if(navBlocked(F,p.x,p.y,CARS_W/2,false)) return false; } return true; }
+function carsDrive(c,dt){
+  var F=G.F, Nn=carsNav.nodes, A, B, C, ux, uy, len, s, i;
+  if(c.st===1){ c.v=0; c.stallT-=dt; if(c.stallT<=0) c.st=0; return; }
+  if(c.st===2){ c.v=0; c.parkT-=dt; return; }
+  if(c.fadeT>0){ c.v=0; return; } // wedged on someone's screen: it fades where it stands
+  if(c.spin>0){ // turning back where it stands
+    var st=Math.min(c.spin,CARS_SPIN*dt); c.h=angNorm(c.h+st*c.spinDir); c.spin-=st; c.v=0; carsSetFrame(c);
+    if(c.spin<=0){ var t=c.a; c.a=c.b; c.b=t; c.lo=-c.lo; c.lw=CARS_LANE; c.next=carsPick(c.b,c.a); c.blockT=0; c.blocked=false; c.probeT=0; }
+    return; }
+  A=Nn[c.a]; B=Nn[c.b]; ux=B.x-A.x; uy=B.y-A.y; len=Math.sqrt(ux*ux+uy*uy); ux/=len; uy/=len; s=(c.x-A.x)*ux+(c.y-A.y)*uy;
+  // at the junction: onto the next street (a dead end turns back instead)
+  if(c.next===c.a){ if(len-s<40){ carsTurnBack(c); return; } }
+  else if(s>=len-CARS_LANE-8){ C=Nn[c.next]; c.a=c.b; c.b=c.next; c.next=carsPick(c.b,c.a); A=B; B=C; ux=B.x-A.x; uy=B.y-A.y; len=Math.sqrt(ux*ux+uy*uy); ux/=len; uy/=len; s=(c.x-A.x)*ux+(c.y-A.y)*uy; }
+  // the pursuit target: L ahead along the route, in the lane the car wants
+  var L=34+c.v*0.12, tg=carsAt(c,L,c.lo), turn=0;
+  if(c.next!==c.a){ C=Nn[c.next]; var wx=C.x-B.x, wy=C.y-B.y, wl=Math.sqrt(wx*wx+wy*wy); turn=Math.abs(ux*wy-uy*wx)/wl; }
+  var want=Math.atan2(tg.y-c.y,tg.x-c.x), dh=angNorm(want-c.h), vWant=CARS_CRUISE;
+  if((turn>0.3&&len-s<110)||Math.abs(dh)>0.35||Math.abs(c.lw-c.lo)>6) vWant=CARS_TURN;
+  // what is in the way: the map (round it in the other lane, else wait, then turn back), a person, another car.
+  // The map is looked at ten times a second (staggered per car): 24 px of travel at cruise, well inside the 70 px probe;
+  // five times a second when nobody is near enough to see it.
+  c.probeT-=dt; var look=c.probeT<=0;
+  if(look){ c.probeT+=c.far?CARS_LOOK*2:CARS_LOOK; if(c.probeT<=0) c.probeT=CARS_LOOK;
+    c.blocked=carsAhead(c,F,c.lo);
+    if(c.blocked){ var other=c.lo>0?-CARS_LANE:CARS_LANE; if(!carsAhead(c,F,other)){ c.lw=other; c.blocked=false; } }
+    else if(c.lw<0&&c.lo<-CARS_LANE+4&&carsLaneFree(c,F,CARS_LANE)) c.lw=CARS_LANE; } // past it: back to the left
+  var blocked=c.blocked, person=c.person, car=false; // c.person: someone within 40 px of the bumper (the bodies pass, last frame)
+  for(i=0;i<carsList.length;i++){ var o=carsList[i]; if(o===c) continue; var ox=o.x-c.x, oy=o.y-c.y; if(ox>140||ox<-140||oy>140||oy<-140) continue;
+    var of=ox*c.cs+oy*c.sn, ol=-ox*c.sn+oy*c.cs; if(of>0&&of<CARS_L+24&&ol<CARS_W&&ol>-CARS_W){ car=true; break; } }
+  if(blocked){ vWant=0; c.blockT+=dt; if(c.blockT>=CARS_WAIT){ carsTurnBack(c); return; } }
+  else if(car){ vWant=0; c.blockT+=dt*0.5; if(c.blockT>=CARS_WAIT*2){ carsTurnBack(c); return; } }
+  else c.blockT=0;
+  if(person&&!blocked){ c.waitT+=dt; vWant=c.waitT>CARS_PATIENCE?Math.min(vWant,CARS_CREEP):0; } else c.waitT=0;
+  c.lo+=Math.max(-140*dt,Math.min(140*dt,c.lw-c.lo));
+  var dv=vWant-c.v; c.v+=dv>0?Math.min(dv,CARS_ACC*dt):Math.max(dv,-CARS_BRAKE*dt);
+  if(c.v>5){ var mt=Math.min(4.2,0.4+c.v/26)*dt; c.h=angNorm(c.h+Math.max(-mt,Math.min(mt,dh))); }
+  var ox0=c.x, oy0=c.y, oh=c.h; c.x+=Math.cos(c.h)*c.v*dt; c.y+=Math.sin(c.h)*c.v*dt;
+  var fr=CARS_L/2-CARS_W/2; // never into a wall (the bonnet, every frame) nor into anything else (the whole body, on a look)
+  if(carsWallHit(F,c.x+Math.cos(c.h)*fr,c.y+Math.sin(c.h)*fr,CARS_W/2)||(look&&!c.far&&!carsFree(F,c.x,c.y,c.h))){
+    c.x=ox0; c.y=oy0; c.h=oh; c.v=0; c.blocked=true; c.blockT+=dt; if(c.blockT>=CARS_WAIT){ carsSetFrame(c); carsTurnBack(c); return; } }
+  carsSetFrame(c);
+}
+function carsWallHit(F,x,y,r){ var ws=nearW(F,x-r,y-r,x+r,y+r), i; // walls only: cheap enough for every frame
+  for(i=0;i<ws.length;i++){ var o=ws[i], cx=x<o.x?o.x:x>o.x+o.w?o.x+o.w:x, cy=y<o.y?o.y:y>o.y+o.h?o.y+o.h:y; if((x-cx)*(x-cx)+(y-cy)*(y-cy)<r*r) return true; }
+  return false; }
+function carsTurnBack(c){ c.spin=Math.PI; c.v=0; c.blockT=0; c.waitT=0;
+  var A=carsNav.nodes[c.a], B=carsNav.nodes[c.b], ux=B.x-A.x, uy=B.y-A.y; c.spinDir=(ux*c.cs+uy*c.sn)*(c.lo>0?1:-1)>=0?1:-1; } // swing the bonnet toward the street's middle
+
+/* ----- bodies (host): heads bumped or blocked, zombies and people pushed out sideways, the horde counted ----- */
+/* The bound head was knocked from (ox,oy) along (ux,uy) by d px. Only the newest trail points it was knocked back over
+   (inside that corridor) go, or the line would march back into the car; the rest of the route stays, so a head hit from
+   the side or from behind keeps its line where it was (snake DNA). Then the trail ends at the head. */
+function carsKnockTrail(ox,oy,ux,uy,d){ var p=G.path, r=G.head.r, q, a, l;
+  while(p.length>1){ q=p[p.length-1]; a=(q.x-ox)*ux+(q.y-oy)*uy; l=(q.y-oy)*ux-(q.x-ox)*uy; if(a>-0.5&&a<=d+0.5&&l<r&&l>-r) p.pop(); else break; }
+  carsTrailEnd(); }
+function carsTrailEnd(){ var p=G.path, hd=G.head, q=p[p.length-1]; if(!q||Math.abs(q.x-hd.x)+Math.abs(q.y-hd.y)>0.5) p.push({x:hd.x,y:hd.y}); }
+function carsOut(P){ if(!P.alive) return true; var C=P===G.cur; return (C?G.hp:P.hp)<=0||!!(C?G.deathCause:P.deathCause); }
+var CARS_FX=['#efe7d2','#b3202b','#8a8296'];
+function carsBump(c,P){
+  var was=G.cur, F=G.F; bindPlayer(P);
+  var hd=G.head, dx=hd.x-c.x, dy=hd.y-c.y, d=Math.sqrt(dx*dx+dy*dy), ux, uy;
+  if(d>0.001){ dx/=d; dy/=d; } else { dx=-c.sn; dy=c.cs; }
+  ux=dx+c.cs*0.7; uy=dy+c.sn*0.7; d=Math.sqrt(ux*ux+uy*uy); if(d<0.001){ ux=-c.sn; uy=c.cs; } else { ux/=d; uy/=d; }
+  var ox=hd.x, oy=hd.y, left=CARS_KNOCK, st; while(left>0){ st=Math.min(CARS_KNOCK_STEP,left); left-=st; hd.x+=ux*st; hd.y+=uy*st; resolveHead(hd,F,1/60); }
+  carsKnockTrail(ox,oy,ux,uy,CARS_KNOCK);
+  var dc=G.deathCause; G.deathCause='car'; hurt(CARS_HP); if(G.hp>0) G.deathCause=dc;
+  var x=Math.round(hd.x), y=Math.round(hd.y);
+  bindPlayer(was);
+  c.hit[P.id]=carsClk; c.st=1; c.stallT=CARS_STALL; c.v=0;
+  G.match.events.push({k:'x',l:'cars',a:'bump',id:P.id,x:x,y:y});
+  carsHitFx(P,x,y,Math.atan2(uy,ux)); // the host's own device plays it now
+}
+/* The hit, on whichever device: everyone sees the flash and the spray; the victim's own phone shakes and buzzes. */
+function carsHitFx(P,x,y,ang){ var hd=P===G.cur?G.head:P.head;
+  hitFx(hd,x,y,ang,CARS_FX,'punch');
+  if(P===G.me){ shakeTo(0.6); Haptic.tap(25); } }
+function carsBodies(dt){
+  var ps=G.players, F=G.F, n=carsList.length, i, j, k, c, P;
+  for(j=0;j<n;j++){ c=carsList[j]; c.mob=0; c.person=false; }
+  // heads: a moving car bumps (1.5 s between the same car and head); otherwise the car is in the way
+  for(i=0;i<ps.length;i++){ P=ps[i]; if(carsOut(P)) continue;
+    for(j=0;j<n;j++){ c=carsList[j]; var hd=headOf(P); if(carsDist(c,hd.x,hd.y)>=hd.r) continue;
+      if(c.st===0&&c.v>CARS_BUMP_V&&(c.hit[P.id]===undefined||carsClk-c.hit[P.id]>=CARS_GAP)&&matchLive()){ carsBump(c,P); continue; }
+      var was=G.cur; bindPlayer(P); carsPush(c,G.head,G.head.r,false); resolveHead(G.head,F,dt); carsTrailEnd(); bindPlayer(was); } } // in the way: the trail just ends at the head
+  // zombies of every line and every stray: out sideways, never hurt; the ones round a stalled car are counted
+  // (a line is only walked for the cars inside its bounding box this frame: most of the time that is none)
+  var R=CARS_L/2+CARS_MOB_R;
+  for(i=0;i<ps.length;i++){ var cur=ps[i]===G.cur, sg=cur?G.segs:ps[i].segs, MB=cur?G.mobBox:ps[i].mobBox, any=false; if(!sg.length||!MB) continue;
+    for(j=0;j<n;j++){ c=carsList[j]; c.nr=c.x+R>MB.x0&&c.x-R<MB.x1&&c.y+R>MB.y0&&c.y-R<MB.y1; if(c.nr) any=true; }
+    if(any) for(k=0;k<sg.length;k++) carsZombie(sg[k],n,F,true); }
+  for(j=0;j<n;j++) carsList[j].nr=true;
+  var ss=G.strays; for(k=0;k<ss.length;k++){ var s=ss[k]; if(!s.dead) carsZombie(s,n,F,!s.hostile); }
+  // people step aside; anyone within 40 px of a moving bumper has the car brake next frame
+  var hs=G.humans, hl=CARS_L/2, hw=CARS_W/2+HUMAN_R, ahead=hl+CARS_PERSON+HUMAN_R; for(k=0;k<hs.length;k++){ var h=hs[k]; if(h.dead) continue;
+    for(j=0;j<n;j++){ c=carsList[j]; var dx=h.x-c.x, dy=h.y-c.y; if(dx>120||dx<-120||dy>120||dy<-120) continue;
+      var f=dx*c.cs+dy*c.sn, l=-dx*c.sn+dy*c.cs; if(l>=hw||l<=-hw) continue;
+      if(f>0&&f<ahead) c.person=true;
+      if(f<hl+HUMAN_R&&f>-hl-HUMAN_R&&carsPush(c,h,HUMAN_R,true)) resolve(h,HUMAN_R,F); } }
+}
+function carsZombie(z,n,F,count){ for(var j=0;j<n;j++){ var c=carsList[j], dx=z.x-c.x, dy=z.y-c.y;
+  if(!c.nr||dx>CARS_L/2+CARS_MOB_R||dx<-CARS_L/2-CARS_MOB_R||dy>CARS_L/2+CARS_MOB_R||dy<-CARS_L/2-CARS_MOB_R) continue;
+  if(carsPush(c,z,SEG_R,true)) resolve(z,SEG_R,F);
+  if(count&&c.st===1&&carsDist(c,z.x,z.y)<=CARS_MOB_R) c.mob++; } }
+/* The driver gets out at the driver's door (on the right: these are British cars), frightened, and the people code has
+   them from here; the car stays parked and empty. */
+function carsBail(c){
+  var F=G.F, hw=CARS_W/2+HUMAN_R+5, rx=-c.sn, ry=c.cs, x=c.x+rx*hw+c.cs*6, y=c.y+ry*hw+c.sn*6;
+  if(navBlocked(F,x,y,HUMAN_R,true)){ x=c.x-rx*hw+c.cs*6; y=c.y-ry*hw+c.sn*6; if(navBlocked(F,x,y,HUMAN_R,true)){ var p=freeNear(F,x,y,HUMAN_R+2); x=p.x; y=p.y; } }
+  var h=spawnHuman(false,c.prof,{x:x,y:y,exact:true});
+  if(h){ var Q=nearestPlayer(x,y,true), q=Q?headOf(Q):c; h.born=0.5; h.city=true; h.panic=1.6; h.alertT=8; h.scatterT=2.2; h.scatterA=Math.atan2(y-q.y,x-q.x); h.cover=null; h.huddle=null;
+    h.skin=HUMAN_SKINS[c.id%HUMAN_SKINS.length]; if(!h.ty.cap) h.hair=HAIRS[(c.id*3)%HAIRS.length]; h.fromCar=c.id; }
+  c.st=2; c.parkT=CARS_PARK; c.v=0; c.driver=h||null;
+  Snd.play('door',c.x,c.y);
+  return h;
+}
+
+/* ----- the guest: draw what the host packed, eased between the last two packs ----- */
+function carsUnpack(v){
+  if(!v||typeof v.length!=='number') return;
+  var now=carsClk, i, k, g;
+  if(carsLastPack>=0){ var gap=now-carsLastPack; if(gap>0.01&&gap<0.3) carsIv+=(gap-carsIv)*0.2; }
+  carsLastPack=now;
+  for(k=0;k<carsG.length;k++) carsG[k].seen=false;
+  for(i=0;i+7<v.length;i+=8){
+    var id=v[i]|0, x=+v[i+1], y=+v[i+2], h=(+v[i+3])/100, st=v[i+4]|0, col=v[i+5]|0, pi=v[i+6]|0, life=(+v[i+7])/10;
+    if(!(id>0)||!isFinite(x)||!isFinite(y)||!isFinite(h)||st<0||st>2||!(life>=0)) continue;
+    g=null; for(k=0;k<carsG.length;k++) if(carsG[k].id===id){ g=carsG[k]; break; }
+    if(!g){ g={id:id,x:x,y:y,h:h,x0:x,y0:y,h0:h,x1:x,y1:y,h1:h,st:st,col:col,pi:pi,t0:now,life:0,cs:Math.cos(h),sn:Math.sin(h)}; carsG.push(g); }
+    else { g.x0=g.x; g.y0=g.y; g.h0=g.h; g.x1=x; g.y1=y; g.h1=h; g.t0=now; if(st===2&&g.st!==2) Snd.play('door',x,y); }
+    g.st=st; g.col=col; g.pi=pi; g.life=life; g.seen=true; }
+  for(k=carsG.length-1;k>=0;k--) if(!carsG[k].seen) carsG.splice(k,1);
+}
+function carsGuest(dt){
+  carsClk+=dt;
+  var F=G.F, k, g;
+  for(k=0;k<carsG.length;k++){ g=carsG[k]; var u=Math.min(1,(carsClk-g.t0)/Math.max(0.02,carsIv));
+    g.x=g.x0+(g.x1-g.x0)*u; g.y=g.y0+(g.y1-g.y0)*u; g.h=g.h0+angNorm(g.h1-g.h0)*u; carsSetFrame(g); if(g.life>0) g.life=Math.max(0.001,g.life-dt); }
+  // the predicted head meets a stalled or parked car where the host's does (a moving one is drawn 30-40 px behind the
+  // host's, so its blocks and bumps are left to the host); it is pushed back out against walls only, never furniture,
+  // which only the host moves
+  if(G.me&&G.me.alive&&G.match.phase==='play') for(k=0;k<carsG.length;k++){ g=carsG[k]; if(g.st!==0&&carsDist(g,G.head.x,G.head.y)<G.head.r){ carsPush(g,G.head,G.head.r,false); carsWallOut(F,G.head,G.head.r); } }
+}
+/* A circle pushed out of the walls round it (resolve's rect step, walls only). */
+function carsWallOut(F,o,r){ var ws=nearW(F,o.x-r,o.y-r,o.x+r,o.y+r), i;
+  for(i=0;i<ws.length;i++){ var w=ws[i], cx=Math.max(w.x,Math.min(o.x,w.x+w.w)), cy=Math.max(w.y,Math.min(o.y,w.y+w.h)), dx=o.x-cx, dy=o.y-cy, d2=dx*dx+dy*dy;
+    if(d2>=r*r) continue;
+    if(d2<1e-6){ var l=o.x-w.x, rt=w.x+w.w-o.x, t=o.y-w.y, b=w.y+w.h-o.y, m=Math.min(l,rt,t,b); if(m===l) o.x=w.x-r; else if(m===rt) o.x=w.x+w.w+r; else if(m===t) o.y=w.y-r; else o.y=w.y+w.h+r; }
+    else { var d=Math.sqrt(d2); o.x=cx+dx/d*r; o.y=cy+dy/d*r; } } }
+
+/* ----- drawing (both sides): top-down, ink-and-paper, the bonnet the way it is going ----- */
+function carsDrawOne(x,y,h,st,col,pi,id,alpha){
+  var hl=CARS_L/2, hw=CARS_W/2, body=CARS_COLS[col%CARS_COLS.length]||CARS_COLS[0], keys=carsProfKeys(), ty=PROF[keys[pi]]||null;
+  ctx.save(); ctx.translate(x,y); ctx.rotate(h); ctx.globalAlpha=alpha;
+  ctx.fillStyle='rgba(10,8,14,0.38)'; rr(-hl+3,-hw+4,CARS_L,CARS_W,9); ctx.fill(); // the shadow
+  ctx.fillStyle='#14121a'; ctx.fillRect(hl-21,-hw-3,13,6); ctx.fillRect(hl-21,hw-3,13,6); ctx.fillRect(-hl+8,-hw-3,13,6); ctx.fillRect(-hl+8,hw-3,13,6); // wheels
+  ctx.fillStyle=body; ctx.strokeStyle='#14121a'; ctx.lineWidth=2.2; rr(-hl,-hw,CARS_L,CARS_W,9); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.16)'; rr(-hl+4,-hw+3,CARS_L-8,5,2.5); ctx.fill(); // the light catching one side
+  ctx.fillStyle='rgba(20,18,26,0.22)'; ctx.fillRect(hl-14,-hw+5,1.5,CARS_W-10); // the bonnet's seam
+  ctx.fillStyle='#27313c'; rr(-17,-hw+4,31,CARS_W-8,6); ctx.fill(); // glass all round the cabin
+  ctx.fillStyle='rgba(143,216,255,0.28)'; ctx.beginPath(); ctx.moveTo(8,-hw+6); ctx.lineTo(12,-hw+8); ctx.lineTo(12,-2); ctx.lineTo(8,-4); ctx.closePath(); ctx.fill(); // a glint on the windscreen
+  if(st!==2&&ty){ // the driver, seen through the windscreen, on the right
+    ctx.fillStyle=HUMAN_SKINS[id%HUMAN_SKINS.length]; ctx.beginPath(); ctx.arc(7,5,4.6,0,TAU); ctx.fill();
+    ctx.fillStyle=ty.cap||HAIRS[(id*3)%HAIRS.length]; ctx.beginPath(); ctx.arc(7,5,4.6,Math.PI*0.5,Math.PI*1.5); ctx.fill(); }
+  ctx.fillStyle=body; ctx.strokeStyle='rgba(20,18,26,0.55)'; ctx.lineWidth=1.2; rr(-13,-hw+6,15,CARS_W-12,4); ctx.fill(); ctx.stroke(); // the roof
+  if(st===2){ ctx.save(); ctx.translate(9,hw-1); ctx.rotate(-0.95); ctx.fillStyle=body; ctx.strokeStyle='#14121a'; ctx.lineWidth=2; rr(-19,-1,19,5,2); ctx.fill(); ctx.stroke(); ctx.fillStyle='#27313c'; ctx.fillRect(-15,0.5,9,2); ctx.restore(); } // the driver's door, left open
+  ctx.fillStyle='#fff3b0'; rr(hl-4,-hw+3,4,7,1.5); ctx.fill(); rr(hl-4,hw-10,4,7,1.5); ctx.fill(); // headlights
+  var brake=st===1, blink=st===2&&Math.sin(G.t*7)>0;
+  ctx.fillStyle=brake?'#ff3b30':blink?'#ffb02e':'#6a1a1a'; rr(-hl,-hw+3,3.5,7,1.5); ctx.fill(); rr(-hl,hw-10,3.5,7,1.5); ctx.fill();
+  if(blink){ ctx.fillStyle='#ffb02e'; rr(hl-4,-hw+3,4,4,1); ctx.fill(); rr(hl-4,hw-7,4,4,1); ctx.fill(); }
+  if(brake||blink){ ctx.globalCompositeOperation='lighter'; var rgb=brake?'255,50,40':'255,170,40'; lightPool(-hl-2,-hw+6,16,rgb,0.5*alpha); lightPool(-hl-2,hw-6,16,rgb,0.5*alpha); }
+  else if(st===0){ ctx.globalCompositeOperation='lighter'; lightPool(hl+16,-hw+7,22,'255,240,180',0.16*alpha); lightPool(hl+16,hw-7,22,'255,240,180',0.16*alpha); } // headlamps on the road
+  ctx.restore();
+}
+/* Seconds before a leaving car is gone (parked, or fading where it was wedged), 0 for a car that is staying: it fades
+   over its last CARS_FADE seconds on every device. */
+function carsLife(c){ return c.st===2?Math.max(0.001,c.parkT):c.fadeT>0?c.fadeT:0; }
+function carsDraw(){
+  var M=G.match, cx=G.cam.x, cy=G.cam.y, mx=W/2+90, my=H/2+90, list=M.host?carsList:carsG, k, c;
+  for(k=0;k<list.length;k++){ c=list[k]; if(Math.abs(c.x-cx)>mx||Math.abs(c.y-cy)>my) continue;
+    var life=M.host?carsLife(c):c.life, al=life>0?Math.min(1,life/CARS_FADE):1;
+    if(al<=0) continue;
+    carsDrawOne(c.x,c.y,c.h,c.st,c.col,c.pi,c.id,al); }
+}
+
+Royale.cars={
+  update:function(dt){
+    var M=G.match; if(!M) return; if(M!==carsM) carsReset(M);
+    if(!M.host){ carsGuest(dt); return; }
+    if(M.phase!=='play'&&M.phase!=='drop') return;
+    if(!carsNav) carsNav=carsNavBegin();
+    if(!carsNav.ready) carsNavStep(G.F,carsNav,CARS_NAV_WORK,CARS_NAV_MS);
+    if(M.phase!=='play') return;
+    carsClk+=dt;
+    if(M.clock<CARS_FROM||!carsNav.ready) return;
+    carsKeep(dt);
+    var i, c, ps=G.players;
+    for(i=0;i<carsList.length;i++) carsDrive(carsList[i],dt);
+    carsBodies(dt);
+    for(i=carsList.length-1;i>=0;i--){ c=carsList[i];
+      if(c.fadeT>0){ c.fadeT-=dt; if(c.fadeT<=0) carsGone(i); continue; }
+      if(c.st===1&&c.mob>=CARS_MOB) carsBail(c);
+      if(c.st===2&&c.parkT<=0){ carsGone(i); continue; }
+      // left play: far from every living head (it goes at once: nobody can see it), or wedged somewhere for 6 s (it
+      // fades out if someone could be looking). c.far: no head close enough to see it, for the driving's look rate.
+      var far=true, seen=false; for(var k=0;k<ps.length;k++){ if(!ps[k].alive) continue; var q=headOf(ps[k]), ax=Math.abs(q.x-c.x), ay=Math.abs(q.y-c.y); if(ax<CARS_FAR&&ay<CARS_FAR) far=false; if(ax<CARS_NEAR&&ay<CARS_NEAR) seen=true; }
+      c.far=!seen; c.farT=far&&c.st!==2?c.farT+dt:0;
+      if(c.st===2||Math.abs(c.x-c.sx)+Math.abs(c.y-c.sy)>=20){ c.stuckT=0; c.sx=c.x; c.sy=c.y; } else c.stuckT+=dt; // turning back and forth on one spot counts
+      if(c.farT>3) carsGone(i);
+      else if(c.stuckT>CARS_STUCK){ if(carsSeen(c.x,c.y,CARS_L)){ c.fadeT=CARS_FADE; c.v=0; } else carsGone(i); } }
+  },
+  draw:function(layer){ if(layer==='over'&&G.match&&G.match===carsM) carsDraw(); },
+  teardown:function(){ carsReset(null); },
+  /* §6.5: the cars within 1,500 px of the guest's head, eight integers each: id, x, y, heading ×100, state, colour,
+     profession, and the tenths of a second before a leaving car is gone (0 for one that is staying), so a guest that
+     first sees a car mid-way through its parked 12 s still fades it on time */
+  pack:function(Pg){
+    var M=G.match; if(!M||!M.host||M!==carsM||!Pg) return null;
+    var hd=headOf(Pg), out=[], k, c;
+    for(k=0;k<carsList.length;k++){ c=carsList[k]; if(Math.abs(c.x-hd.x)>CARS_CULL||Math.abs(c.y-hd.y)>CARS_CULL) continue;
+      if(c.st===2&&c.parkT<=0) continue;
+      out.push(c.id,Math.round(c.x),Math.round(c.y),Math.round(angNorm(c.h)*100),c.st,c.col,c.pi,Math.ceil(carsLife(c)*10)); }
+    return out;
+  },
+  unpack:function(v){ var M=G.match; if(!M||M.host) return; if(M!==carsM) carsReset(M); carsUnpack(v); },
+  onEvent:function(ev){
+    if(!ev||ev.a!=='bump'||!G.match) return;
+    var P=playerById(ev.id|0), x=+ev.x, y=+ev.y; if(!P||!isFinite(x)||!isFinite(y)) return;
+    var best=null, bd=1e18, k; for(k=0;k<carsG.length;k++){ var g=carsG[k], d=(g.x-x)*(g.x-x)+(g.y-y)*(g.y-y); if(d<bd){ bd=d; best=g; } }
+    carsHitFx(P,x,y,best?Math.atan2(y-best.y,x-best.x):0);
+  },
+  /* for the sim and the reviewers */
+  list:function(){ return carsList; }, guest:function(){ return carsG; }, nav:function(){ return carsNav; }, want:carsWant,
+  waiting:function(){ return carsWait; }, clock:function(){ return carsClk; }, dist:carsDist, frame:carsSetFrame, bail:carsBail, spawn:carsSpawn, make:carsMake, bump:carsBump, buildNav:carsNavBuild
+};
 /* ---------- Parade Royale: ui (lane F; ROYALE.md §2, §4, §6.2; docs/royale/briefs/F-show.md) ---------- */
 /* The show: a name tag over every rival, the crown over the biggest horde, a red marker over your nemesis in a REVENGE
    match, edge arrows to the two nearest rivals off screen, one match strip, the death stamp and banner, the end screen
@@ -9596,8 +10518,8 @@ var UI_NEM=[
 ];
 var UI_NEM_NONE='Nobody ate you. Everyone noticed.', UI_NEM_KEY='horde_royale_nem';
 /* The death stamp, one word per cause, and the banner when a player did it. */
-var UI_DEATH={people:'PUT DOWN',ghost:'HAUNTED',ring:'BURNED',eaten:'EATEN',horde:'OUT OF ZOMBIES',hazard:'WRONG STEP',hunter:'NO CAMPING'};
-var UI_KILLER={eaten:'{n} ate you whole.',horde:'{n} had your last zombie.',ghost:'{n}\'s ghost had you.'}, UI_KILLER_ANY='{n} finished you off.';
+var UI_DEATH={people:'PUT DOWN',ghost:'HAUNTED',ring:'BURNED',eaten:'FLATTENED',horde:'OUT OF ZOMBIES',hazard:'WRONG STEP',hunter:'NO CAMPING',car:'RUN OVER'};
+var UI_KILLER={eaten:'{n} won the head-on.',horde:'{n} had your last zombie.',ghost:'{n}\'s ghost had you.'}, UI_KILLER_ANY='{n} finished you off.';
 var UI_STATS=[['peak','horde'],['eaten','eaten'],['bites','bites'],['survived','survived']];
 
 /* File-local state, reset whenever G.match is a new object. uiPair[by][of] = {first: match clock of the first zombie by took
@@ -9882,20 +10804,52 @@ canvas.addEventListener('touchstart',holdTouch,{passive:false});
 canvas.addEventListener('touchmove',holdTouch,{passive:false});
 canvas.addEventListener('touchend',holdTouch,{passive:false});
 document.addEventListener('touchmove',function(e){ var t=e.target; if(t&&t.closest&&t.closest('.overlay')) return; if(e.cancelable) e.preventDefault(); },{passive:false});
-canvas.addEventListener('pointerdown',function(e){
+/* The stick. Single-player: it floats where the finger lands and nothing is drawn at rest. Parade Royale on a touch screen
+   (ROYALE.md §14; owner, 20 Oct: "3 people required a mouse or controller on the bottom left"): a resting stick sits
+   bottom left (joyHome, drawn by drawJoyHome); a press within JOY_ZONE of it anchors there and the knob follows the finger
+   inside the ring; a press anywhere else floats as before. It steers a ghost too (ghosts read the same input) and steps
+   aside only while the ghost pad needs the room (a narrow phone). */
+var JOY_R=56, JOY_KNOB=22, JOY_X=92, JOY_Y=150, JOY_ZONE=110, JOY_GAP=8;
+var joyTouch=false; try{ joyTouch=!!(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches); }catch(e){} // the test chromeTop uses
+var joyAt={x:0,y:0,w:-1,h:-1,pad:false,node:null};
+function joyInsets(){ // the safe-area insets as the HUD has them: :root pads the bottom, #hud the left (max(10px,inset))
+  var b=0, l=0;
+  try{ var gs=window.getComputedStyle; if(gs){ b=parseFloat(gs(document.documentElement).paddingBottom)||0; var hl=parseFloat(gs($('hud')).paddingLeft)||0; l=hl>10.5?hl:0; } }catch(e){}
+  joyAt.x=JOY_X+l; joyAt.y=H-JOY_Y-b; joyAt.w=W; joyAt.h=H;
+}
+function joyPadClash(el){ // the ghost pad (lane E, bottom right) inside the stick's reach: the ring, the knob at full tilt and a gap
+  var b=el&&el.querySelector?el.querySelector('.rgBtn'):null; if(!b) return false;
+  var p=el.querySelector('.rgPad')||b, r=p.getBoundingClientRect?p.getBoundingClientRect():null, reach=JOY_R+JOY_KNOB+JOY_GAP; if(!r||!r.width) return false;
+  return r.left<joyAt.x+reach&&r.right>joyAt.x-reach&&r.top<joyAt.y+reach&&r.bottom>joyAt.y-reach;
+}
+function joyHome(fresh){
+  if(!G||!G.match||G.match.phase!=='play'||state!=='play'||!joyTouch) return null;
+  if(G.me&&!G.me.alive&&!G.me.ghost) return null; // dead and not yet a ghost (the wait, the ad card, a late joiner): nothing to steer
+  var el=$('royaleGhostPad'), nd=(el&&el.firstChild)||null;
+  if(joyAt.w!==W||joyAt.h!==H){ joyInsets(); fresh=true; }
+  if(fresh||nd!==joyAt.node){ joyAt.node=nd; joyAt.pad=joyPadClash(el); } // layout is read only on a press, a new size or a re-mounted pad
+  return joyAt.pad?null:joyAt;
+}
+function joyAim(dx,dy){ var l=Math.hypot(dx,dy); if(l>6) input={x:dx/l,y:dy/l}; return l; }
+function joyDown(e){
   if(state!=='play') return;
   e.preventDefault();
+  if(G&&G.match&&joy&&joy.home&&e.pointerId!==joy.id) return; // a second finger never takes over a held stick in a match
   try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+  if(e.pointerType) joyTouch=e.pointerType!=='mouse';
+  var hm=joyHome(true);
+  if(hm&&Math.hypot(e.clientX-hm.x,e.clientY-hm.y)<=JOY_ZONE){ joy={id:e.pointerId,ox:hm.x,oy:hm.y,x:e.clientX,y:e.clientY,home:true}; joyAim(joy.x-joy.ox,joy.y-joy.oy); return; }
   joy={id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY};
-});
-canvas.addEventListener('pointermove',function(e){
+}
+function joyMove(e){
   if(!joy||e.pointerId!==joy.id) return;
   joy.x=e.clientX; joy.y=e.clientY;
-  var dx=joy.x-joy.ox, dy=joy.y-joy.oy, l=Math.hypot(dx,dy);
-  if(l>6) input={x:dx/l,y:dy/l};
-  if(l>56){ joy.ox=joy.x-dx/l*56; joy.oy=joy.y-dy/l*56; }
-});
+  var dx=joy.x-joy.ox, dy=joy.y-joy.oy, l=joyAim(dx,dy);
+  if(l>JOY_R&&!joy.home){ joy.ox=joy.x-dx/l*JOY_R; joy.oy=joy.y-dy/l*JOY_R; } // a floating ring is dragged along; an anchored one stays put
+}
 function endJoy(e){ if(joy&&e.pointerId===joy.id){ joy=null; input=null; } }
+canvas.addEventListener('pointerdown',joyDown);
+canvas.addEventListener('pointermove',joyMove);
 canvas.addEventListener('pointerup',endJoy);
 canvas.addEventListener('pointercancel',endJoy);
 canvas.addEventListener('contextmenu',function(e){ e.preventDefault(); });
