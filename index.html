@@ -90,6 +90,14 @@ button.mid.ramp{ background:#e9514e; color:#fff0ca; }
 .skinrow button.skin .h-icon{ width:26px; height:26px; }
 .skinrow button.skin.on{ background:var(--zombie); }
 .skinrow button.skin.locked{ opacity:.65; cursor:default; }
+.tonerow{ display:flex; justify-content:center; gap:2px; margin-top:4px; }
+.tonerow button.tone{ width:44px; height:44px; padding:0; border:0; background:none; display:flex; align-items:center; justify-content:center; position:relative; cursor:pointer; }
+.tonerow button.tone i{ width:28px; height:28px; border-radius:50%; background:var(--tc); border:2px solid var(--ink); box-sizing:border-box; display:block; }
+.tonerow button.tone.on i{ box-shadow:0 0 0 3px var(--bone),0 0 0 5px var(--ink); }
+.tonerow button.tone.mech i{ border:3px solid var(--amber); }
+.tonerow button.tone.locked i{ opacity:.4; }
+.tonerow button.tone .h-icon{ position:absolute; width:14px; height:14px; right:5px; bottom:5px; }
+.tonehow{ text-align:center; font:600 12px var(--font); min-height:16px; margin-top:2px; }
 .soon{ margin-top:10px; font-size:12px; font-weight:600; color:#6a6376; }
 .area.rampcard{ background:#2a1f2b; color:#fff0ca; border-color:#e9514e; box-shadow:4px 4px 0 #e9514e; }
 .area.rampcard .an{ color:#ff8a7a; }
@@ -777,7 +785,7 @@ var SKILLS=[
  {id:'slot',short:'One more mutation slot.',name:'Extra Mutation Slot',icon:':slot:',max:1,cost:[750],desc:['Every campaign starts with five mutation slots instead of four. The new one starts empty.'],slot:true}
 ];
 var OLD_COSTS={fire:[25,80,190],vomit:[20,70,160],roar:[25,80,190],brute:[20,60,145],electric:[30,95,225],momentum:[15,55,130,245,385],passive:[20,60,135,245,400],mob:[25,80,190,385],thick:[15,45,110],greed:[30,110],tiny:[40],huge:[40]}; // pre-v5 prices, for the one-off credit
-var META={brains:0,skills:{},stance:null,v:6,badges:{},skin:null,free:null,starter:null,ads:{shown:0,rewarded:0,declined:0,failed:0},deaths:{},ramp:{runs:0,bestT:0,bestMob:0,bestLvl:0,last:null}};
+var META={brains:0,skills:{},stance:null,v:7,badges:{},skin:null,tone:{},toneOwn:{},free:null,starter:null,ads:{shown:0,rewarded:0,declined:0,failed:0},deaths:{},ramp:{runs:0,bestT:0,bestMob:0,bestLvl:0,last:null}};
 /* Rampage pays no brains, but it keeps a record (owner, 15 Oct): best time survived and the biggest horde, per device. */
 function rampMeta(r){ r=r&&typeof r==='object'?r:{}; return {runs:+r.runs||0,bestT:+r.bestT||0,bestMob:+r.bestMob||0,bestLvl:+r.bestLvl||0,last:r.last&&typeof r.last==='object'?r.last:null}; }
 /* Save versions. v2 (6 Oct): the old Passive Aggressive (cut-off zombies snap) became Mob; Passive Aggressive is now the
@@ -793,6 +801,9 @@ function migrateMeta(m){ m.skills=m.skills||{}; var v0=m.v||1; if(v0<2){ var p=m
   if(v0<5){ var cr=0; for(var ck in OLD_COSTS){ var sd0=null; for(var q=0;q<SKILLS.length;q++) if(SKILLS[q].id===ck) sd0=SKILLS[q]; var rk=Math.min(m.skills[ck]||0,OLD_COSTS[ck].length); for(var rr0=0;rr0<rk;rr0++) cr+=OLD_COSTS[ck][rr0]-(sd0?sd0.cost[rr0]:0); } if(cr>0) m.brains=(m.brains||0)+cr; m.v=5; }
   /* v6 (15 Oct): the Rampage record (best time, biggest horde). Nothing moves. */
   if(v0<6){ m.ramp=rampMeta(m.ramp); m.v=6; }
+  /* v7 (20 Oct): skin colours, picked per monster and owned. Nothing is granted from older records (owner). */
+  if(v0<7){ m.v=7; }
+  m.tone=m.tone&&typeof m.tone==='object'?m.tone:{}; m.toneOwn=m.toneOwn&&typeof m.toneOwn==='object'?m.toneOwn:{};
   if(m.starter&&!(COMBAT.indexOf(m.starter)>=0&&(m.skills[m.starter]||0)>0)) m.starter=null;
   /* A free-roam horde saved before v4 kept run perks on top of owned ranks. Convert it once into acquired ranks: what it
      had live (owned + perks), clamped to what is owned now. Unknown families and foundation perks are dropped. A loadout
@@ -804,7 +815,7 @@ function migrateMeta(m){ m.skills=m.skills||{}; var v0=m.v||1; if(v0<2){ var p=m
   return m; }
 /* Local ad telemetry (no backend): how often the revive was offered, taken, declined or failed, and on which stage runs end. */
 function adsCounters(a){ a=a&&typeof a==='object'?a:{}; return {shown:+a.shown||0,rewarded:+a.rewarded||0,declined:+a.declined||0,failed:+a.failed||0}; }
-function loadMeta(){ try{ var m=JSON.parse(localStorage.getItem('horde_meta')||'null'); if(m&&typeof m==='object'){ var was=m.v, fr0=JSON.stringify(m.free||null); migrateMeta(m); META.brains=m.brains||0; META.skills=m.skills||{}; META.stance=m.stance||null; META.v=m.v; META.badges=m.badges||{}; META.skin=m.skin||null; META.won=m.won||META.won; META.free=m.free&&m.free.unlocked?m.free:null; META.starter=m.starter||null; META.gift=m.gift===true?50:(+m.gift||0); META.played=!!m.played; META.runs=+m.runs||0; META.seenStances=!!m.seenStances; META.welcome=!!m.welcome; META.ads=adsCounters(m.ads); META.deaths=(m.deaths&&typeof m.deaths==='object')?m.deaths:{}; META.ramp=rampMeta(m.ramp); if(was!==m.v||fr0!==JSON.stringify(m.free||null)) saveMeta(); } else META.v=6; }catch(e){} }
+function loadMeta(){ try{ var m=JSON.parse(localStorage.getItem('horde_meta')||'null'); if(m&&typeof m==='object'){ var was=m.v, fr0=JSON.stringify(m.free||null); migrateMeta(m); META.brains=m.brains||0; META.skills=m.skills||{}; META.stance=m.stance||null; META.v=m.v; META.badges=m.badges||{}; META.skin=m.skin||null; META.tone=m.tone; META.toneOwn=m.toneOwn; META.won=m.won||META.won; META.free=m.free&&m.free.unlocked?m.free:null; META.starter=m.starter||null; META.gift=m.gift===true?50:(+m.gift||0); META.played=!!m.played; META.runs=+m.runs||0; META.seenStances=!!m.seenStances; META.welcome=!!m.welcome; META.ads=adsCounters(m.ads); META.deaths=(m.deaths&&typeof m.deaths==='object')?m.deaths:{}; META.ramp=rampMeta(m.ramp); if(was!==m.v||fr0!==JSON.stringify(m.free||null)) saveMeta(); } else META.v=7; }catch(e){} }
 /* Every save gets 100 brains once (owner, 8 Oct; saves that got the first 50 are topped up), so a first run can start with a few mutations. The
    first trip to the tree then says so. */
 var GIFT_BRAINS=100;
@@ -820,6 +831,52 @@ var SKINS={
   werewolf:{name:'Werewolf',icon:':werewolf:',set:'gym',body:'#5a3a22',skin:'#a2703f',line:'#3a2414',sig:'Lunges reach further. Roar becomes a howl.'},
   mummy:{name:'Mummy',icon:':mummy:',set:'lab',body:'#a8987a',skin:'#e8dcbc',line:'#6e5f42',sig:'Unrolls a bandage trail that tangles anyone who steps on it.'}
 };
+/* Skin colours (owner, 20 Oct): each monster has schemes that suit it, cosmetic only. The first is the original. Common
+   ones come from the campaign worn as that monster (how 'building': leave a building's third floor; 'city': the gates
+   open), the mech from one Rampage run as that monster lasting TONE_RAMP_T. S overrides the head's body/skin, skin is
+   the mob and stray skin, map recolours the drawing's own literals through tc(). */
+var TONE_RAMP_T=17*60;
+var ZK=['#d1ee78','#a9d95b','#6fa944','#89bd4d','#a9df57','#e5f5a6','#385337','#c5e977','#4b763f'];
+function zmap(a,x){ var m={}, i, k; for(i=0;i<ZK.length;i++) m[ZK[i]]=a[i]; for(k in x||{}) m[k]=x[k]; return m; }
+var TONES={
+  zombie:[
+    {id:'green',name:'Green',full:'Zombie'},
+    {id:'ashen',name:'Ashen',full:'Ashen Zombie',how:'building',skin:'#b8b9ae',map:zmap(['#dcdcd2','#b3b4aa','#7d7f78','#9a9b92','#b8b9ae','#ecece4','#3d3f3b','#c9cbbf','#5c5e58'],{'#375d57':'#3d4552','#80a67a':'#8a95a8'})},
+    {id:'bruised',name:'Bruised',full:'Bruised Zombie',how:'city',skin:'#a98bd0',map:zmap(['#cdb2e6','#a786c9','#6e4f93','#8a68ad','#a98bd0','#e7d9f5','#3b2a4f','#c7a8e8','#5a3f78'],{'#375d57':'#4a3a5c','#80a67a':'#9a86b4'})},
+    {id:'mech',name:'Mech',full:'Mech Zombie',how:'ramp',mech:true,glow:'79,240,255',skin:'#9aa4ad',map:zmap(['#c9d2d9','#9aa4ad','#5f6a74','#7d8790','#9aa4ad','#e1e8ee','#22282e','#4ff0ff','#3b434c'],{'#375d57':'#2f353d','#80a67a':'#6c7782','#e9514e':'#4ff0ff','#fff0ca':'#c9d3da','#fff6df':'#d9f9ff','#dccda7':'#8e98a1','#d65445':'#4ff0ff','#cf7467':'#4ff0ff','#344c36':'#3b434c'})}],
+  vampire:[
+    {id:'count',name:'Count',full:'Vampire'},
+    {id:'nosferatu',name:'Nosferatu',full:'Nosferatu',how:'building',S:{body:'#1a1a1e',skin:'#b7c0b0'},map:{'#662c46':'#26262c','#302b40':'#1a1a1e','#8e1b2b':'#3a3a44','#d1495b':'#6d6d7a','#d54e61':'#f2d14a','#2a2636':'#1a1a1e'}},
+    {id:'bloodlord',name:'Blood Lord',full:'Blood Lord',how:'city',S:{body:'#3a0f17',skin:'#f2d6d6'},map:{'#662c46':'#a3182c','#302b40':'#14121a','#8e1b2b':'#1a0b10','#d1495b':'#e8b04a','#d54e61':'#c4122c','#2a2636':'#14121a'}},
+    {id:'mech',name:'Mech',full:'Mech Vampire',how:'ramp',mech:true,glow:'255,59,92',S:{body:'#2b3038',skin:'#9aa4ad'},map:{'#662c46':'#3b434c','#302b40':'#5f6a74','#8e1b2b':'#1f6f86','#d1495b':'#4ff0ff','#d54e61':'#ff3b5c','#fff0ca':'#d9f9ff','#2a2636':'#5f6a74','#e9514e':'#ff3b5c','#344c36':'#3b434c'}}],
+  werewolf:[
+    {id:'brown',name:'Brown',full:'Werewolf'},
+    {id:'black',name:'Black',full:'Black Werewolf',how:'building',rim:'#8a7f92',S:{body:'#1c1a20',skin:'#3b3540'},map:{'#5a3a2b':'#141218','#5a3a22':'#1c1a20','#d9a37a':'#6a5560','#3a2414':'#09080b','#d2aa81':'#5a5058','#ffdb70':'#ffb347','#3b2928':'#14121a','#2a2636':'#141218'}},
+    {id:'snow',name:'Snow',full:'Snow Werewolf',how:'city',S:{body:'#8d8a86',skin:'#cfcbc4'},map:{'#5a3a2b':'#a9a6a0','#5a3a22':'#a9a6a0','#d9a37a':'#efd9d4','#3a2414':'#6c6a66','#d2aa81':'#ece8e2','#ffdb70':'#7fd6ff','#2a2636':'#9a978f'}},
+    {id:'mech',name:'Mech',full:'Mech Wolf',how:'ramp',mech:true,glow:'255,70,50',S:{body:'#2f353d',skin:'#9aa4ad'},map:{'#5a3a2b':'#4a525b','#5a3a22':'#4a525b','#d9a37a':'#ff7a2f','#3a2414':'#22282e','#d2aa81':'#c0c8cf','#ffdb70':'#ff3b3b','#2a2636':'#4a525b','#e9514e':'#ff3b3b','#fff0ca':'#d9e2e8','#344c36':'#3b434c'}}],
+  mummy:[
+    {id:'linen',name:'Linen',full:'Mummy'},
+    {id:'tomb',name:'Tomb',full:'Tomb Mummy',how:'building',S:{body:'#5a4e3c',skin:'#8c7f6a'},map:{'rgba(110,95,66,0.9)':'rgba(40,32,22,0.9)','rgba(110,95,66,0.8)':'rgba(40,32,22,0.8)','rgba(255,220,90,0.55)':'rgba(90,255,200,0.55)'}},
+    {id:'bog',name:'Bog',full:'Bog Mummy',how:'city',S:{body:'#6f7452',skin:'#a7ad86'},map:{'rgba(110,95,66,0.9)':'rgba(55,62,36,0.9)','rgba(110,95,66,0.8)':'rgba(55,62,36,0.8)','rgba(255,220,90,0.55)':'rgba(170,255,90,0.55)'}}]
+};
+var TONE_MAPS={}, TONE_DEFS={}, TC=null;
+(function(){ for(var mon in TONES) for(var i=0;i<TONES[mon].length;i++){ var t=TONES[mon][i]; t.mon=mon; t.skin=t.skin||(t.S&&t.S.skin)||SKINS[mon].skin; if(!t.how) t.how=null; TONE_MAPS[mon+':'+t.id]=t.how?(t.map||{}):null; TONE_DEFS[mon+':'+t.id]=t; } })();
+function tc(c){ var m=TC&&TC[c]; return m||c; }
+function toneDef(mon,id){ var L=TONES[mon]; if(!L) return null; for(var i=0;i<L.length;i++) if(L[i].id===id) return L[i]; return null; }
+function toneOwned(mon,id){ var t=toneDef(mon,id); return !!t&&(!t.how||!!(META.toneOwn||{})[mon+':'+id]); }
+function toneId(mon){ var L=TONES[mon]; if(!L) return null;
+  if(G&&G.toneOverride&&mon===skinId()&&toneDef(mon,G.toneOverride)) return G.toneOverride; // the share card draws the run's colour
+  var p=(META.tone||{})[mon]; return p&&toneOwned(mon,p)?p:L[0].id; }
+function curTone(){ var mon=skinId(); return toneDef(mon,toneId(mon)); }
+function toneKey(){ var mon=skinId(); return mon+':'+toneId(mon); }
+function equipTone(mon,id){ if(!toneOwned(mon,id)) return false; META.tone=META.tone||{}; if(TONES[mon][0].id===id) delete META.tone[mon]; else META.tone[mon]=id; saveMeta(); return true; }
+function grantTone(mon,id){ var t=toneDef(mon,id); if(!t||!t.how||toneOwned(mon,id)) return false; META.toneOwn=META.toneOwn||{}; META.toneOwn[mon+':'+id]=1; saveMeta();
+  if(G) (G.toneNews=G.toneNews||[]).push(SKINS[mon].icon+' '+t.full+' unlocked! Pick it in Pick an Area.'); return true; } // told once play resumes: a floor's last exit opens the draft and the card over any banner
+/* Earning: the run's monster (G.runSkin: worn at a campaign start, lent by Rampage, null in free roam) gets the colour
+   whose rule just came true. Mummy has no mech, so a Rampage mummy earns nothing. */
+function toneCheck(how){ var mon=G&&G.runSkin, L=TONES[mon]; if(!L) return null; for(var i=0;i<L.length;i++) if(L[i].how===how) return grantTone(mon,L[i].id)?L[i]:null; return null; }
+function toneHow(mon,id){ var t=toneDef(mon,id), n=SKINS[mon]?SKINS[mon].name:''; if(!t||!t.how) return '';
+  return t.how==='building'?'Clear a building as the '+n+'.':t.how==='city'?'Reach the city as the '+n+'.':'Survive '+fmt(TONE_RAMP_T)+' in one Rampage run as the '+n+'.'; }
 var SET_STAGES={office:[0,1,2],gym:[3,4,5],lab:[6,7,8]};
 /* The city. Downtown is the game today; the rest are on their way (the teaser points at the Airport). */
 var DISTRICTS=[
@@ -3370,7 +3427,7 @@ function updateFences(dt){
       // one real zap per crossing (owner, 7 Oct: 'laser did not affect me at all'), then the burn while you stay in it
       if(!(G.fenceT>0)){ var fl=Math.hypot(fe.x2-fe.x1,fe.y2-fe.y1)||1, fnx=-(fe.y2-fe.y1)/fl, fny=(fe.x2-fe.x1)/fl, side=(hd.x-fe.x1)*fnx+(hd.y-fe.y1)*fny;
         if(Math.abs(side)<1) side=-(Math.cos(hd.h)*fnx+Math.sin(hd.h)*fny);
-        var sg0=side<0?-1:1; hd.x+=fnx*sg0*FENCE_KNOCK; hd.y+=fny*sg0*FENCE_KNOCK; resolveHead(hd,F,0);
+        var sg0=side<0?-1:1; stepHead(hd,F,fnx*sg0*FENCE_KNOCK,fny*sg0*FENCE_KNOCK,0);
         var inv0=G.inv; G.inv=0; if(!(G.reviveT>0)) hurt(FENCE_ZAP); G.inv=Math.max(G.inv,inv0); G.stun=Math.max(G.stun,0.35); G.fenceT=0.8; G.shake=Math.max(G.shake,0.3);
         spawnParts(hd.x,hd.y,10,['#ff4b4b','#ffe066','#efe7d2']); addFloat(hd.x,hd.y-34,'ZAPPED','#ff4b4b',16); Snd.play('fence',hd.x,hd.y); }
       if(!(G.reviveT>0)){ G.hp-=15*dt; G.hurt=Math.max(G.hurt,0.15); } }
@@ -3798,7 +3855,11 @@ function refugeStep(h,dt,d){
   if(h.stunT>0) return drop(3);
   if(!inside){ if(R.shut||d<160||h.refAge>7||dr.blocked) return drop(3);
     var dhz=Math.hypot(dr.x-hd.x,dr.y-hd.y), dme=Math.hypot(dr.x-h.x,dr.y-h.y); if(dhz<120||(dhz<dme&&dme>60)) return drop(3); }
-  else { if(!R.shut&&(d<160||d>900)) return drop(d<160?2:0); }
+  else {
+    // the zombie got this close between two of updateRefuges' 0.2s checks: apply its rule now (enough inside, the zombie at a
+    // door and not in the room) and slam the gates, rather than bolt from a shop that was about to lock
+    if(!R.shut&&d<160&&!R.vault&&R.cd<=0&&R.occ>=3&&!inRect(hd.x,hd.y,R.inside)){ for(var dk=0;dk<R.doors.length;dk++) if(Math.hypot(hd.x-R.doors[dk].x,hd.y-R.doors[dk].y)<200){ shutRefuge(R); break; } }
+    if(!R.shut&&(d<160||d>900)) return drop(d<160?2:0); }
   if(inside){ if(!h.refSpot){ h.refSpot=refugeSpot(h,R); h.refStuck=0; h.refLx=h.x; h.refLy=h.y; } tgt=h.refSpot; if(solidHit(F,h.x,h.y,tgt.x,tgt.y)) tgt=N[dr.inNode];
     h.refStuck+=dt; if(h.refStuck>0.8){ var moved=Math.hypot(h.x-(h.refLx||0),h.y-(h.refLy||0)); h.refLx=h.x; h.refLy=h.y; h.refStuck=0; // furniture in the way (no real progress in 0.8s): settle here if it is deep enough, else the nearest clear spot
       if(moved<14&&Math.hypot(tgt.x-h.x,tgt.y-h.y)>10){ h.refSpot=inRect(h.x,h.y,refInset(R))?{x:h.x,y:h.y}:freeNear(F,h.x,h.y,HUMAN_R,refInset(R)); tgt=h.refSpot; } } }
@@ -3814,9 +3875,9 @@ function refugeStep(h,dt,d){
 function cityInland(F,x,y,w,h){ return x>60&&y>60&&x+w<F.w-60&&y+h<F.h-60&&nearClear(F,x,y,w,h); } // never in the 40px streets along the map edge
 function doorOut(d){ var nx=d.side===3?-1:d.side===1?1:0, ny=d.side===0?-1:d.side===2?1:0; return {nx:nx,ny:ny,tx:-ny,ty:nx,horiz:d.side%2===0}; } // out of a refuge door into the street, and along its wall
 /* Two crates on the pavement beside a shop door (the pieces people drag across doorways). Returns how many fitted. */
-function placeCrates(F,d){ var o=doorOut(d), n=0;
+function placeCrates(F,d,dry){ var o=doorOut(d), n=0; // dry: only count how many would fit
   for(var k=-1;k<=1;k+=2){ var cw=o.horiz?60:40, chh=o.horiz?40:60, cx=d.x+o.nx*38+o.tx*k*82-cw/2, cy=d.y+o.ny*38+o.ty*k*82-chh/2;
-    if(cityInland(F,cx,cy,cw,chh)&&!defOccupied([{x:cx,y:cy,w:cw,h:chh}])){ addRect(F,'crate',cx,cy,cw,chh,1,{city:true}); n++; } }
+    if(cityInland(F,cx,cy,cw,chh)&&!defOccupied([{x:cx,y:cy,w:cw,h:chh}])){ if(!dry) addRect(F,'crate',cx,cy,cw,chh,1,{city:true}); n++; } }
   return n; }
 function cityProps(F){
   F.refuges.forEach(function(R){ var d=R.doors[0]; if(!d) return; var o=doorOut(d);
@@ -3832,8 +3893,9 @@ function cityRestock(F,dt){
   var hd=G.head, cands=F.refuges.filter(function(R){ var d=R.doors[0]; if(R.court||!d) return false; var dist=Math.hypot(d.x-hd.x,d.y-hd.y); if(dist<500||dist>1400) return false;
     return !qR(F,d.x-130,d.y-130,d.x+130,d.y+130).some(function(o){ return o.kind==='crate'&&Math.hypot(o.x+o.w/2-d.x,o.y+o.h/2-d.y)<130; }); }); // the bucket query is coarse: measure
   if(!cands.length) return; var k0=Math.floor(Math.random()*cands.length);
-  for(var k=0;k<cands.length;k++){ var d=cands[(k0+k)%cands.length].doors[0], n=placeCrates(F,d); // the first door with room for them (some pavements never had any)
-    if(n){ F.gridDirty=true; addFloat(d.x,d.y-30,'delivery','#efe7d2',12); fxParts(d.x,d.y,8,['#b9a56f','#8a7a5a']); return; } }
+  // two crates (owner, 16 Oct): the first door with room for both, else the first with room for one (some pavements never had any)
+  for(var want=2;want>=1;want--) for(var k=0;k<cands.length;k++){ var d=cands[(k0+k)%cands.length].doors[0]; if(placeCrates(F,d,true)<want) continue;
+    placeCrates(F,d); F.gridDirty=true; addFloat(d.x,d.y-30,'delivery','#efe7d2',12); fxParts(d.x,d.y,8,['#b9a56f','#8a7a5a']); return; }
 }
 /* Panic buttons on the six shops nearest the arena (owner, 16 Oct): Reception's slam-and-squad, now on the streets. The
    button sits on the shell wall 60px along from the first door; a receptionist within 300px runs to it, the shop's gates
@@ -3908,7 +3970,7 @@ function playBounds(F){ return (F.arena&&!F.cityOpen)?F.arena:{x:0,y:0,w:F.w,h:F
 /* The campaign gunship is down: the barriers come down, the rest of the city opens and the survival clock starts. */
 function openCityGates(quiet){
   var F=G.F; if(!F.arena||F.cityOpen) return;
-  F.cityOpen=true; F.spawnArea=null;
+  F.cityOpen=true; F.spawnArea=null; if(!quiet) toneCheck('city'); // the campaign reached the city (Rampage and free roam open quietly)
   for(var i=0;i<F.barriers.length;i++){ var b=F.barriers[i], ri=F.rects.indexOf(b), wi=F.walls.indexOf(b); if(ri>=0) F.rects.splice(ri,1); if(wi>=0) F.walls.splice(wi,1);
     for(var k=0;k<6;k++){ var t=(k+0.5)/6; cityDebris(b.x+(b.w>b.h?b.w*t:b.w/2),b.y+(b.w>b.h?b.h/2:b.h*t)); } }
   F.barriers=[]; F.gridDirty=true;
@@ -4108,18 +4170,20 @@ function updateMobileNest(h,ns,dt,d){
    defence is there. Eat one, stun one, slime one or get within 110px and the build is cancelled. A site is refused if it
    would land on anyone, or if it would cut down how much of the city you can still reach (a 50px flood fill from the
    head before and after). Laser checkpoints and roadblocks can be destroyed: bite an emitter or crowd zombies on it.
-   At most 12 laser checkpoints and 32 traps stand at once; past that, an engineer dismantles the oldest first. */
+   At most 12 laser checkpoints, 10 roadblocks, 4 MG positions and 32 traps stand at once, counting the jobs colleagues are
+   already on; at the checkpoint cap an engineer dismantles the oldest first. */
 var DEF_LASER_MAX=12, DEF_TRAP_MAX=32, DEF_ROADBLOCK_MAX=10, DEF_MG_MAX=4, ENG_BUILD={laser:4,roadblock:3.5,traps:3,mg:4}, DEF_HP={laser:2,roadblock:4};
 function cityEngineers(L){
   var want=L>=2?Math.min(4,1+Math.floor((L-2)/4)):0, have=G.humans.filter(function(h){ return !h.dead&&h.engineer; }).length;
   if(have<want){ var p=citySpawnPoint(700,1300); if(p){ var h=citySpawn(p,'rifle'); if(h){ h.engineer=true; h.tac=null; } } }
 }
 function engJobKind(L){
-  var lasers=G.F.defs.filter(function(d){ return d.kind==='laser'; }).length, w={laser:L>=2?3:0,roadblock:L>=2?2:0,traps:L>=3?3:0,mg:L>=6?1.5:0}, t=0, k;
-  if(lasers>=DEF_LASER_MAX){ w.laser=0; w.relocate=4; }
+  var w={laser:L>=2?3:0,roadblock:L>=2?2:0,traps:L>=3?3:0,mg:L>=6?1.5:0}, t=0, k;
+  function full(kind){ return defCount(kind)+defPending(kind)>=DEF_MAX[kind]; }
+  if(full('laser')){ w.laser=0; w.relocate=4; }
   if(G.F.traps.length>=DEF_TRAP_MAX) w.traps=0;
-  if(G.F.defs.filter(function(d){ return d.kind==='roadblock'; }).length>=DEF_ROADBLOCK_MAX) w.roadblock=0;
-  if(G.F.defs.filter(function(d){ return d.kind==='mg'; }).length>=DEF_MG_MAX) w.mg=0;
+  if(full('roadblock')) w.roadblock=0;
+  if(full('mg')) w.mg=0;
   for(k in w) t+=w[k]; if(!t) return null; var r=Math.random()*t; for(k in w){ r-=w[k]; if(r<=0) return k; } return null;
 }
 /* Street segments between neighbouring junctions, 350-800px from the head, preferring the way you're heading. */
@@ -4146,6 +4210,8 @@ function citySetPieces(F){
 /* Is a standing defence (checkpoint, roadblock, MG position) within r of (x,y)? */
 function defNear(x,y,r){ var D=G.F.defs; for(var i=0;i<D.length;i++) if(Math.hypot(D[i].x-x,D[i].y-y)<r) return true; return false; }
 function defCount(kind){ var D=G.F.defs, n=0; for(var i=0;i<D.length;i++) if(D[i].kind===kind) n++; return n; }
+/* How many engineers are already on a job of this kind (walking there or kneeling), so nobody starts one past the cap. */
+function defPending(kind){ var H=G.humans, n=0; for(var i=0;i<H.length;i++) if(!H[i].dead&&H[i].engineer&&H[i].job&&H[i].job.kind===kind) n++; return n; }
 var DEF_MAX={laser:DEF_LASER_MAX,roadblock:DEF_ROADBLOCK_MAX,mg:DEF_MG_MAX};
 /* The footprint a defence would occupy, as rects (for 'is anyone standing here' and for the flood fill). */
 function defFoot(kind,s){ var hw=CITY_STREET/2+20; if(kind==='traps') return [{x:s.x-80,y:s.y-80,w:160,h:160}]; if(kind==='mg') return [{x:s.x-50,y:s.y-50,w:100,h:100}];
@@ -4329,6 +4395,8 @@ function rampCrowd(){ var p=citySpawnPoint(450,1000); if(!p) return 0; var n=3+M
 /* Each rampage minute from the second on: one small squad, a bigger one later, from two sides after minute 8. */
 function rampMinute(){ var m=Math.floor(rampMin()); if(m<RAMP_SQUAD_FROM) return; var n=Math.min(7,2+Math.floor((m-RAMP_SQUAD_FROM)/1.5)), ways=m>=12?3:m>=8?2:1, a0=Math.random()*TAU;
   for(var k=0;k<ways;k++) citySquad(n,a0+k*TAU/ways,null); banner(':gunship: Minute '+(m+1)+'. '+(RAMP_NOTE[m]||(m===RAMP_SQUAD_FROM?'They have started shooting back.':'More of them.'))); }
+/* Rampage lends a random monster, only from those you have unlocked (owner, 20 Oct), in the colour you picked for it. */
+function rampSkin(){ var ids=Object.keys(SKINS).filter(skinUnlocked); return ids[Math.floor(Math.random()*ids.length)]||'zombie'; }
 /* RAMPAGE opens a pick-three of the six in-run mutations (owner, 8 Oct: chosen, not random); the last three stay picked. */
 var RAMP_PICKS=3, rampPicks=[];
 function openRampPicker(){ starterFrom='ramp'; rampPicks=rampPicks.filter(function(id){ return COMBAT.indexOf(id)>=0; }).slice(0,RAMP_PICKS); renderStarter(COMBAT);
@@ -4336,7 +4404,7 @@ function openRampPicker(){ starterFrom='ramp'; rampPicks=rampPicks.filter(functi
 function startRampage(picks){
   if(!picks||picks.length!==RAMP_PICKS){ openRampPicker(); return false; }
   $('city').classList.add('hidden'); launchRun(); resumeCard(); lastMode='rampage';
-  var ids=Object.keys(SKINS); G.mode='rampage'; G.skinOverride=ids[Math.floor(Math.random()*ids.length)];
+  G.mode='rampage'; G.skinOverride=rampSkin(); G.runSkin=G.skinOverride;
   G.citySeed=1+Math.floor(Math.random()*2147483000); G.bountyPaid=true; G.bossDone=true; loadStage(9); openCityGates(true);
   G.phase='free'; G.freeT=0; G.cityMin=-1;
   var r=G.run, i; for(i=0;i<COMBAT.length;i++) r.ceil[COMBAT[i]]=SKMAX[COMBAT[i]]; for(i=0;i<picks.length;i++) if(isCombat(picks[i])) r.ranks[picks[i]]=1;
@@ -4344,7 +4412,7 @@ function startRampage(picks){
   G.humans=[]; G.F.nests=[]; G.proj=[]; // the arena's MG nests unmanned; the streets packed with easy people from the start
   for(var cr=0;cr<40&&G.humans.length<rampPop();cr++) rampCrowd();
   SEG_R=9*segScale(); G.st=stats(); G.hp=G.st.maxHp; chipsDirty=true; renderChips(); Snd.music('streets'); updateHud();
-  showCard('RAMPAGE — THE CITY','Eat to level up. It starts quiet. It does not stay quiet.','No brains. No mercy. '+SKINS[G.skinOverride].name+' today.');
+  showCard('RAMPAGE — THE CITY','Eat to level up. It starts quiet. It does not stay quiet.','No brains. No mercy. '+curTone().full+' today.');
   return true;
 }
 /* The record (owner, 15 Oct): Rampage pays no brains, but the time survived and the biggest horde are kept per device and
@@ -4352,16 +4420,16 @@ function startRampage(picks){
 function rampRecord(){
   var R=G.ramp, M=META.ramp; if(!R) return null;
   var first=!R.rec, rec=R.rec||{newT:false,newMob:false}; // a revived run that dies again is the same run: fresh numbers, counted once
-  rec.t=Math.floor(G.freeT||0); rec.mob=G.peakMob||0; rec.lvl=(R.lvl||0)+1; rec.wave=R.wave||0; rec.skin=skinId();
+  rec.t=Math.floor(G.freeT||0); rec.mob=G.peakMob||0; rec.lvl=(R.lvl||0)+1; rec.wave=R.wave||0; rec.skin=skinId(); rec.tone=toneId(rec.skin);
   if(rec.t>M.bestT){ M.bestT=rec.t; rec.newT=true; } if(rec.mob>M.bestMob){ M.bestMob=rec.mob; rec.newMob=true; } if(rec.lvl>M.bestLvl) M.bestLvl=rec.lvl;
-  if(first) M.runs++; M.last={t:rec.t,mob:rec.mob,lvl:rec.lvl,wave:rec.wave,skin:rec.skin}; R.rec=rec; saveMeta(); return rec;
+  if(first) M.runs++; M.last={t:rec.t,mob:rec.mob,lvl:rec.lvl,wave:rec.wave,skin:rec.skin,tone:rec.tone}; R.rec=rec; saveMeta(); return rec;
 }
 function rampShareText(rec){ return 'I lasted '+fmt(rec.t)+' in Parade of the Dead Rampage with '+rec.mob+' zombies behind me.'; }
 /* The share card: a 900x1200 poster in the ink-and-paper look, drawn with the game's own primitives (ctx swapped like
    paintTeaser): the run's skin leading a trail of its horde, then the numbers. No URL yet, no platform emoji. */
 function rampShareCard(rec){
   var cv=document.createElement('canvas'), W0=900, H0=1200; cv.width=W0; cv.height=H0; var g=cv.getContext('2d'); if(!g) return cv;
-  var sv=ctx, S=SKINS[rec.skin]||SKINS.zombie, disp=(typeof document.fonts==='object'&&document.fonts.check&&document.fonts.check('40px Bangers'))?'Bangers':'Rubik, system-ui, sans-serif', k;
+  var sv=ctx, S=SKINS[rec.skin]||SKINS.zombie, T=toneDef(rec.skin,rec.tone)||(TONES[rec.skin]||TONES.zombie)[0], disp=(typeof document.fonts==='object'&&document.fonts.check&&document.fonts.check('40px Bangers'))?'Bangers':'Rubik, system-ui, sans-serif', k;
   ctx=g; ctx.setTransform(1,0,0,1,0,0);
   ctx.fillStyle='#1c1a24'; ctx.fillRect(0,0,W0,H0);
   ctx.fillStyle='#b3202b'; ctx.fillRect(58,58,W0-100,H0-100); // the red offset shadow
@@ -4375,13 +4443,13 @@ function rampShareCard(rec){
   var n=Math.min(40,rec.mob), sc=3.2, hx=W0*0.66, hy=430;
   for(k=n-1;k>=0;k--){ var u=k/Math.max(1,n-1), zx=hx-85-u*440, zy=hy+Math.sin(k*1.7)*(14+u*26), zs=2.4*(1-u*0.45); // the line shrinks into the distance, inside the border
     ctx.save(); ctx.translate(zx,zy); ctx.scale(zs,zs); ctx.translate(-zx,-zy);
-    drawChar(zx,zy,0,{r:11,body:'#375d57',skin:'#a9df57',hair:HAIRS[k%HAIRS.length],zombie:true,moving:true,phase:k*0.9,lod:u>0.6?1:0}); ctx.restore(); }
-  var hd={x:hx,y:hy,h:0,r:HEAD_R,vx:0,vy:0}, svSkin=G.skinOverride; if(SKINS[rec.skin]) G.skinOverride=rec.skin; // the record's skin, not whatever is equipped now
-  ctx.save(); ctx.translate(hx,hy); ctx.scale(sc*1.4,sc*1.4); ctx.translate(-hx,-hy); try{ drawPlayer(hd); }catch(e){} ctx.restore(); G.skinOverride=svSkin;
+    drawChar(zx,zy,0,{r:11,body:'#375d57',skin:T.skin,tone:T.mon+':'+T.id,feat:T.mon==='zombie'?null:T.mon,hair:HAIRS[k%HAIRS.length],zombie:true,moving:true,phase:k*0.9,lod:u>0.6?1:0}); ctx.restore(); } // the trail wears the run's colour
+  var hd={x:hx,y:hy,h:0,r:HEAD_R,vx:0,vy:0}, svSkin=G.skinOverride, svTone=G.toneOverride; if(SKINS[rec.skin]){ G.skinOverride=rec.skin; G.toneOverride=T.id; } // the record's skin and colour, not whatever is worn now
+  ctx.save(); ctx.translate(hx,hy); ctx.scale(sc*1.4,sc*1.4); ctx.translate(-hx,-hy); try{ drawPlayer(hd); }catch(e){} ctx.restore(); G.skinOverride=svSkin; G.toneOverride=svTone;
   // the numbers
   function tile(x,y,w,v,l){ ctx.fillStyle='#e2d8bd'; ctx.fillRect(x,y,w,150); ctx.strokeStyle='#1c1a24'; ctx.lineWidth=4; ctx.strokeRect(x,y,w,150); ctx.fillStyle='#1c1a24'; ctx.font='400 74px '+disp; ctx.fillText(v,x+w/2,y+88); ctx.font='700 22px Rubik, system-ui, sans-serif'; ctx.fillStyle='#4a4458'; ctx.fillText(l,x+w/2,y+128); }
   tile(70,620,245,fmt(rec.t),'time survived'); tile(327,620,245,String(rec.mob),'biggest horde'); tile(584,620,245,'LV '+rec.lvl,'level');
-  ctx.fillStyle='#1c1a24'; ctx.font='700 30px Rubik, system-ui, sans-serif'; ctx.fillText(S.name+' · wave '+rec.wave+(rec.newT||rec.newMob?' · NEW BEST':''),W0/2,840);
+  ctx.fillStyle='#1c1a24'; ctx.font='700 30px Rubik, system-ui, sans-serif'; ctx.fillText(T.full+' · wave '+rec.wave+(rec.newT||rec.newMob?' · NEW BEST':''),W0/2,840);
   ctx.fillStyle='#4a4458'; ctx.font='600 26px Rubik, system-ui, sans-serif'; ctx.fillText(rec.mob?'They locked the doors. It did not help.':'Never got a bite in. Harsh.',W0/2,890);
   ctx.fillStyle='#b3202b'; ctx.font='400 48px '+disp; ctx.fillText('YOU ARE THE ZOMBIE',W0/2,1060);
   ctx=sv; return cv;
@@ -4406,6 +4474,7 @@ function rampXpFrac(){ var R=G.ramp; if(!R) return 0; var prev=R.nextXp-(RAMP_XP
 function rampWaveSize(w){ return RAMP_WAVES[Math.min(w,RAMP_WAVES.length-1)]; }
 function updateRampage(dt){
   var R=G.ramp, hd=G.head, i; if(!R) return;
+  if(!R.toneDone&&G.freeT>=TONE_RAMP_T){ R.toneDone=true; R.toneNew=toneCheck('ramp'); } // 17:00 in this one run; the death poster names it
   var rm=Math.floor(rampMin()); if(rm>(R.min===undefined?0:R.min)){ R.min=rm; rampMinute(); }
   R.live=R.live.filter(function(m){ return !m.dead; });
   if(!R.live.length&&R.nextT<0) R.nextT=G.freeT+RAMP_GAP;
@@ -4582,6 +4651,15 @@ function resolve(e,r,F){
   for(i=0;i<CS.length;i++){ var c=CS[i], ddx=e.x-c.x, ddy=e.y-c.y, dd=Math.hypot(ddx,ddy)||0.001, mn=c.r+r; if(dd<mn){ e.x=c.x+ddx/dd*mn; e.y=c.y+ddy/dd*mn; } }
   e.x=Math.max(r,Math.min(F.w-r,e.x)); e.y=Math.max(r,Math.min(F.h-r,e.y));
 }
+/* Move the head by (mx,my) in steps of at most HEAD_STEP, resolving after each (owner, 20 Oct: late in the story Momentum
+   has no limit and the head reached 1,400px/s; one 23px step put its centre past a 12px wall and the push-out finished
+   the job, so it went through walls the mob can't and left it behind in another room. A phone at 20fps does it at 580).
+   Knock-backs (a punch, a laser fence) come through here too: a 26px punch against a wall put the head on the far side. */
+var HEAD_STEP=10;
+function stepHead(hd,F,mx,my,dt){
+  var n=Math.max(1,Math.ceil(Math.hypot(mx,my)/HEAD_STEP)), sdt=dt/n;
+  for(var k=0;k<n;k++){ hd.x+=mx/n; hd.y+=my/n; applyBelts(hd,F,sdt); resolveHead(hd,F,sdt); }
+}
 function resolveHead(hd,F,dt){
   var r=hd.r, i, nx, ny, pen, frac, RS=qR(F,hd.x-r-8,hd.y-r-8,hd.x+r+8,hd.y+r+8), CS=qC(F,hd.x-r-50,hd.y-r-50,hd.x+r+50,hd.y+r+50);
   for(i=0;i<RS.length;i++){
@@ -4675,7 +4753,7 @@ function avoidFire(h,F){ for(var i=0;i<F.hazards.length;i++){ var hz=F.hazards[i
 function newGame(){
   SEG_R=9*segScale();
   /* Match state here; the per-player part lives in playerDefaults() (Parade Royale core) and is bound into G by bindPlayer. */
-  G={t:0,stageT:0,shieldHits:[],reveal:null,revealNext:null,dtReal:0,frameN:0,flash:0,shake:0,arcs:[],
+  G={runSkin:null,t:0,stageT:0,shieldHits:[],reveal:null,revealNext:null,dtReal:0,frameN:0,flash:0,shake:0,arcs:[],
      humans:[],strays:[],proj:[],parts:[],decals:[],floats:[],booms:[],beams:[],tracers:[],boss:null,bosses:[],bossDone:false,bossDmg:0,
      spawnT:0,cam:{x:0,y:0},stage:0,sd:null,F:null,floorEaten:0,exitOpen:false,
      heat:0,heatStep:0,alarm:false,bonusLost:false,hunter:null,squadN:0,aiNoted:0,doorFlash:0,eff:null,castIds:null,lockT:-1,huddleT:0,huddleN:0,mini:null,phase:'campaign',cityT:0,cityMin:-1,freeT:0,bountyPaid:false,citySeed:0,heatHead:0,
@@ -4703,6 +4781,7 @@ function loadStage(idx,head){
   G.st=stats();
   for(var k=0;k<Math.min(sd.want,12);k++) spawnHuman(true);
   if(!sd.endless) spawnNestGunners(0);
+  G.keyPasses=0;
   if(sd.puzzle==='key'){
     var best=null, bd=-1;
     for(i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(h.ty.hostile) continue; var d=Math.hypot(h.x-hd.x,h.y-hd.y); if(d>bd){ bd=d; best=h; } }
@@ -5115,7 +5194,7 @@ function stripArmor(h,fx,fy){
 function punch(h){
   var hd=G.head, dx=hd.x-h.x, dy=hd.y-h.y, d=Math.hypot(dx,dy)||1;
   if(h.ty.axe){ hurt(8); var bi=-1, bd=44; for(var q=0;q<G.segs.length;q++){ var sg=G.segs[q], sd=Math.hypot(sg.x-h.x,sg.y-h.y); if(sd<bd){ bd=sd; bi=q; } } if(bi>=0){ spawnParts(G.segs[bi].x,G.segs[bi].y,6,['#b3202b']); removeSeg(bi,'axe'); } } else hurt(5);
-  hd.x+=dx/d*26; hd.y+=dy/d*26; resolveHead(hd,G.F,0);
+  stepHead(hd,G.F,dx/d*26,dy/d*26,0);
   G.stun=Math.max(G.stun,0.2);
   if(h.id==='boxer') flingSegs(h,JAB);
   Snd.play('punch');
@@ -5344,7 +5423,7 @@ function updateHuman(h,dt){
   h.lookT=Math.max(0,(h.lookT||0)-dt); h.voiceT=(h.voiceT||0)-dt;
   if(h.panic>0&&h.panic-dt<=0&&!h.ty.hostile&&Math.hypot(h.x-G.head.x,h.y-G.head.y)>380&&Math.random()<0.5) Snd.human(h,'giggle');   // got away: running and giggling
   if(h.huddle&&!(h.panic>0)&&!h.ty.hostile&&Math.random()<dt*0.04) Snd.human(h,Math.random()<0.5?'argue':'laugh');                 // idle huddles squabble and laugh
-  h.wt-=dt; h.panic-=dt; h.born+=dt; h.noCover-=dt; h.coverT-=dt; h.pushT-=dt; h.pushAnim-=dt; h.throwT-=dt; h.meleeT-=dt; h.fleeT-=dt; h.stunT-=dt; h.standT-=dt; h.bileT-=dt; h.scatterT-=dt; h.flinch-=dt; h.stripT=(h.stripT||0)-dt; h.hiding=false; h.alertT=(h.alertT||0)-dt; h.huddleCd=(h.huddleCd||0)-dt; h.buildCd=(h.buildCd||0)-dt; h.refT=(h.refT||0)-dt; h.refugeCd=(h.refugeCd||0)-dt; if(h.patient&&(h.patient.dead||d<=110)) h.patient=null;
+  h.wt-=dt; h.panic-=dt; h.born+=dt; h.noCover-=dt; h.coverT-=dt; h.pushT-=dt; h.pushAnim-=dt; h.throwT-=dt; h.meleeT-=dt; h.fleeT-=dt; h.stunT-=dt; h.standT-=dt; h.bileT-=dt; h.scatterT-=dt; h.flinch-=dt; h.stripT=(h.stripT||0)-dt; h.fumbleT=(h.fumbleT||0)-dt; h.keyCd=(h.keyCd||0)-dt; h.hiding=false; h.alertT=(h.alertT||0)-dt; h.huddleCd=(h.huddleCd||0)-dt; h.buildCd=(h.buildCd||0)-dt; h.refT=(h.refT||0)-dt; h.refugeCd=(h.refugeCd||0)-dt; if(h.patient&&(h.patient.dead||d<=110)) h.patient=null;
   if(h.panic>0) h.alertT=8;
   if(h.scatterT<=0) h.scatterA=undefined;
   if(h.stunT>0){ if(h.job) engCancel(h,'interrupted'); h.moving=false; resolve(h,HUMAN_R,F); updateHumanPresentation(h,dt,d); return; }
@@ -5352,9 +5431,11 @@ function updateHuman(h,dt){
   // with the zombie itself well away, strays are fair game: people go looking for them and gang up (owner, 7 Oct)
   var away0=!ty.hostile&&ai>=1&&(d>420||(F.layout&&roomAt(F,h.x,h.y)!==roomAt(F,hd.x,hd.y))), td=ty.hostile?null:threatDoor(h), eng=null;
   var sn2=nearestStray(h.x,h.y,away0?HUNT_R:110);
-  var fxs=powerAI(h,dt,d,dx,dy);
+  var fxs=powerAI(h,dt,d,dx,dy), kc;
+  if(fxs===null&&h.key&&ai>=1&&d<KEY_NEAR&&h.keyCd<=0&&h.bileT<=0&&h.fumbleT<=0&&(G.keyPasses||0)<KEY_PASSES&&F.pdoor&&!F.pdoor.open&&(kc=keyCatcher(h,d))) passKey(h,kc); // hot potato
   if(fxs!==null){ sp=fxs; }
   else if(h.pushAnim>0){ sp=0; }
+  else if(h.fumbleT>0){ sp=0; } // just caught the keycard
   else if(ty.hostile){ sp=hostileAI(h,dt,d,dx,dy); if(sp>0&&cityOn()&&F.nav&&segWallHit(F,h.x,h.y,h.x+Math.cos(h.h)*60,h.y+Math.sin(h.h)*60)){ var rw=cityWaypoint(F,h.x,h.y,hd.x,hd.y,h); h.h=Math.atan2(rw.y-h.y,rw.x-h.x); } }
   else if(sn2&&!h.refuge&&!(d<fear&&d<160)){
     var sd2=Math.hypot(sn2.x-h.x,sn2.y-h.y), mates=alliesNear(h,170), fight=(ai>=1&&(h.brave||ty.strong||away0))&&straysNear(sn2.x,sn2.y,100)<=2+mates*1.5;
@@ -5585,6 +5666,55 @@ function unlockDoor(){
   Snd.play('door');
   spawnParts(d.hx+d.w/2,d.hy+d.h/2,16,['#f2b134','#efe7d2']);
   banner(G.exitOpen?':unlock: Keycard! Stairs open.':':unlock: Keycard! Door unlocked.'); // the quota still opens the stairs
+}
+/* Hot potato keycard (owner, 19 Oct; TRAPS.md 1): with the zombie close, the holder throws the card to someone 80-260px
+   off with a clear line who is further from the zombie. It lobs for under a second, homing on the catcher, who fumbles
+   for a second. Three passes a floor. Anything of yours under the flight snatches it; a catcher eaten in flight drops
+   it, and whoever touches it first has it. Smarter people, not stronger: your body is the counter. */
+var KEY_NEAR=180, KEY_MIN=80, KEY_MAX=260, KEY_PASSES=3, KEY_CD=4, KEY_FUMBLE=1, KEY_SPEED=380, KEY_SNATCH=10;
+function keyCatcher(h,d){
+  var hd=G.head, F=G.F, best=null, bz=d+40;
+  for(var i=0;i<G.humans.length;i++){ var o=G.humans[i]; if(o===h||o.dead||o.ty.hostile||o.stunT>0||o.refuge) continue;
+    var od=Math.hypot(o.x-h.x,o.y-h.y); if(od<KEY_MIN||od>KEY_MAX) continue;
+    var oz=Math.hypot(o.x-hd.x,o.y-hd.y); if(oz<=bz||lineBlocked(F,h.x,h.y,o.x,o.y)) continue;
+    best=o; bz=oz; }
+  return best;
+}
+function passKey(h,to){
+  var dd=Math.hypot(to.x-h.x,to.y-h.y), a=Math.atan2(to.y-h.y,to.x-h.x);
+  h.key=false; h.keyCd=KEY_CD; h.pushAnim=0.3; h.h=a; h.face=a; G.keyPasses=(G.keyPasses||0)+1;
+  G.proj.push({kind:'card',x:h.x,y:h.y,x0:h.x,y0:h.y,tx:to.x,ty:to.y,to:to,t:0,dur:Math.max(0.4,Math.min(0.7,dd/KEY_SPEED)),hgt:0,rot:0,landed:false,trail:[],dead:false});
+  Snd.play('throw',h.x,h.y); Snd.human(h,'plan');
+}
+function catchKey(pr,h){ pr.dead=true; h.key=true; h.runner=false; h.fumbleT=pr.landed?0:KEY_FUMBLE; h.keyCd=KEY_CD; h.alertT=8; fxParts(pr.x,pr.y,6,['#7fe7ff','#efe7d2'],0.6); }
+function snatchKey(pr){ pr.dead=true; fxParts(pr.x,pr.y,12,['#7fe7ff','#ffffff','#f2b134']); stamp('SNATCHED',2,pr.x,pr.y); Haptic.tap(15); unlockDoor(); }
+/* The head or a zombie in the line within reach of (x,y). */
+function keySnatcher(x,y){
+  var hd=G.head; if(Math.hypot(x-hd.x,y-hd.y)<hd.r+KEY_SNATCH) return true;
+  var MB=G.mobBox, r=SEG_R+KEY_SNATCH; if(x<MB.x0-r||x>MB.x1+r||y<MB.y0-r||y>MB.y1+r) return false;
+  for(var i=0;i<G.segs.length;i++){ var s=G.segs[i]; if(Math.abs(s.x-x)<r&&Math.abs(s.y-y)<r&&Math.hypot(s.x-x,s.y-y)<r) return true; }
+  return false;
+}
+function updateCard(pr,dt){
+  if(!pr.landed){
+    var to=pr.to, live=to&&!to.dead; if(live){ pr.tx=to.x; pr.ty=to.y; } // it homes on the catcher
+    pr.t+=dt; var u=Math.min(1,pr.t/pr.dur); pr.x=pr.x0+(pr.tx-pr.x0)*u; pr.y=pr.y0+(pr.ty-pr.y0)*u; pr.hgt=Math.sin(u*Math.PI); pr.rot+=dt*14;
+    pr.trail.push(pr.x,pr.y-pr.hgt*34); if(pr.trail.length>12) pr.trail.splice(0,2);
+    if(keySnatcher(pr.x,pr.y)){ snatchKey(pr); return; }
+    if(u>=1){ if(live) catchKey(pr,to); else { pr.landed=true; pr.hgt=0; pr.trail.length=0; } }
+    return;
+  }
+  if(keySnatcher(pr.x,pr.y)){ snatchKey(pr); return; } // on the floor: first to touch it has it
+  for(var i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(!h.dead&&!h.ty.hostile&&Math.hypot(h.x-pr.x,h.y-pr.y)<HUMAN_R+8){ catchKey(pr,h); return; } }
+}
+function drawCard(o){
+  var tr=o.trail, i, y=o.y-o.hgt*34;
+  for(i=0;i<tr.length;i+=2){ ctx.globalAlpha=0.12+0.4*i/tr.length; ctx.fillStyle='#7fe7ff'; ctx.beginPath(); ctx.arc(tr[i],tr[i+1],2+3*i/tr.length,0,TAU); ctx.fill(); }
+  ctx.globalAlpha=1;
+  ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(o.x,o.y+4,8,4,0,0,TAU); ctx.fill();
+  if(o.landed) y-=4+Math.sin(G.t*4)*3;
+  ctx.fillStyle='rgba(127,231,255,'+(0.25+0.15*Math.sin(G.t*8))+')'; ctx.beginPath(); ctx.arc(o.x,y,15,0,TAU); ctx.fill();
+  ctx.save(); ctx.translate(o.x,y); ctx.rotate(o.landed?0:o.rot); Art.draw('key',0,0,21); ctx.restore();
 }
 function setDoor(open){
   var d=G.F.pdoor; if(!d||d.latched) return;
@@ -6285,6 +6415,7 @@ function nextFloor(){
   var bonus=100*(G.stage+1); G.score+=bonus; G.runBrains+=BRAIN_FLOOR+G.stage;
   r.floorBonus={stage:G.stage,score:bonus,brains:BRAIN_FLOOR+G.stage,doubled:false,open:true}; // the card may offer to double it
   if(G.stage<=8&&!r.exits[G.stage]){ r.exits[G.stage]=true; queueChoice('floor',1); }
+  if(G.mode!=='rampage'&&G.stage%3===2&&G.stage<=8) toneCheck('building'); // a building's third floor is behind you
   r.pickup=null; r.pending=null; r.assistDue=null; r.deferFloor=true; G.exitOpen=false;
   Snd.play('floor');
   if(!serviceRewards()&&r.deferFloor){ r.deferFloor=false; enterNextFloor(); }
@@ -6326,8 +6457,7 @@ function updateHead(dt){
   /* Let go and you stop (owner, 9 Oct: players wanted to hold still); the head eases to a halt and back up to speed. */
   G.go=G.go===undefined?1:G.go; G.go+=((dir?1:0)-G.go)*Math.min(1,dt*(dir?GO_EASE:STOP_EASE)); G.idleT=dir?0:(G.idleT||0)+dt;
   var sp=st.speed*spm*(G.adr>0?1.4:1)*(G.foamSlow||1)*G.go, ox=hd.x, oy=hd.y;
-  hd.x+=Math.cos(hd.h)*sp*dt; hd.y+=Math.sin(hd.h)*sp*dt;
-  applyBelts(hd,F,dt); resolveHead(hd,F,dt);
+  stepHead(hd,F,Math.cos(hd.h)*sp*dt,Math.sin(hd.h)*sp*dt,dt);
   /* Cling: pressing on something heavy, joystick wobble no longer slides you along its face; the push itself is untouched and a turn past CLING.ang still peels you off. */
   if(G.heave&&G.heave.fresh){ G.heave.fresh=false; var HV=G.heave, pushA=Math.atan2(-HV.ny,-HV.nx);
     if(Math.abs(angNorm(hd.h-pushA))<CLING.ang){ var cnx=-HV.ny, cny=HV.nx, cmv=(hd.x-ox)*cnx+(hd.y-oy)*cny; hd.x-=cnx*cmv*CLING.grip; hd.y-=cny*cmv*CLING.grip; } }
@@ -6336,6 +6466,7 @@ function updateHead(dt){
   G.walk+=sp*dt*0.09;
 }
 function update(dt){
+  if(G.toneNews&&G.toneNews.length) banner(G.toneNews.shift());
   G.t+=dt; G.stageT+=dt; G.frameN=(G.frameN||0)+1; if(G.phase==='city'){ G.cityT+=dt; if(G.cityT>=CITY_T){ startEnding(); return; } cityMiles(); } else if(G.phase==='free') G.freeT+=dt;
   if(G.phase==='ending'){ updateEnding(dt); return; } updateHeat(dt);
   var F=G.F, sd=G.sd, i, j;
@@ -6421,6 +6552,7 @@ function update(dt){
       for(j=0;j<G.humans.length;j++){ var bh=G.humans[j]; if(bh.dead) continue; if(Math.hypot(bh.x-pr.x,bh.y-pr.y)<HUMAN_R+5){ pr.dead=true; Snd.group('slimed',bh.x,bh.y); Snd.play('splat',bh.x,bh.y); hitFx(bh,bh.x,bh.y,Math.atan2(pr.vy,pr.vx),['#8fd14f','#55efc4']); if(pr.splash){ for(var q2=0;q2<G.humans.length;q2++){ var sh=G.humans[q2]; if(!sh.dead&&Math.hypot(sh.x-pr.x,sh.y-pr.y)<70){ sh.bileT=4; sh.burst=0; } } } else { bh.bileT=4; bh.burst=0; } spawnParts(pr.x,pr.y,8,['#8fd14f','#55efc4']); G.decals.push({x:pr.x,y:pr.y,r:12,life:15,color:'#3f7a2a'}); addFloat(bh.x,bh.y-18,'covered in bile','#8fd14f',11); break; } }
       continue;
     }
+    if(pr.kind==='card'){ updateCard(pr,dt); continue; }
     if(pr.kind==='grenade'){
       pr.t+=dt;
       if(!pr.landed){ var u=Math.min(1,pr.t/pr.dur); pr.x=pr.x0+(pr.tx-pr.x0)*u; pr.y=pr.y0+(pr.ty-pr.y0)*u; pr.hgt=Math.sin(u*Math.PI); if(u>=1){ pr.landed=true; pr.hgt=0; } }
@@ -6503,7 +6635,7 @@ function drawCharCached(x,y,ang,o){
   // Only what drawChar actually paints at this LOD goes in the key: a zombie's hair, badge and skin feature are LOD-0
   // details (the badge still sets the gymbro/boxer build), so far zombies of one profession share one sprite.
   var hair=(det||!o.zombie)?(o.hair||''):'', icon=(det||!o.zombie)?id:(/gymbro|boxer/.test(id)?id:''), feat=(det&&o.zombie)?(o.feat||''):'';
-  var key=S+'|'+o.r+'|'+o.lod+'|'+o.body+'|'+o.skin+'|'+hair+'|'+(o.zombie?1:0)+(o.helmet?1:0)+(o.push?1:0)+(o.brace?1:0)+'|'+feat+'|'+icon+'|'+(o.outline||'')+'|'+sw;
+  var key=S+'|'+o.r+'|'+o.lod+'|'+o.body+'|'+o.skin+'|'+hair+'|'+(o.zombie?1:0)+(o.helmet?1:0)+(o.push?1:0)+(o.brace?1:0)+'|'+feat+'|'+icon+'|'+(o.outline||'')+'|'+sw+'|'+(o.zombie?(o.tone||''):'');
   var c=CHAR_CACHE[key];
   if(c) c.t=CHAR_TICK;
   else {
@@ -6530,6 +6662,7 @@ function drawBlood(d){
 function drawChar(x,y,ang,o){
   var r=o.r, sw=o.moving&&!o.brace?Math.sin(o.phase):0, s, id=String(o.icon||'').replace(/:/g,''), armed=/^(guard|soldier|hunter|flamer|grenadier|gunner|rail)$/.test(id);
   if(o.lod>=2){ charEllipse(x,y,r,r,o.body,false); charEllipse(x+Math.cos(ang)*r*0.25,y+Math.sin(ang)*r*0.25,r*0.6,r*0.6,o.skin,false); return; }
+  var tc0=TC; TC=o.zombie&&o.tone?TONE_MAPS[o.tone]||null:null; // a zombie's colour reaches its own literals; people never
   ctx.save(); ctx.translate(x,y); ctx.rotate(ang); ctx.lineWidth=1.8; ctx.strokeStyle=o.outline||'#171923';
   if(o.brace) ctx.translate(r*.15,0); // braced against something: a lean into it
   if(o.lod===0){ charEllipse(2,4,r*1.12,r*0.88,'rgba(0,0,0,.35)',false);
@@ -6539,7 +6672,7 @@ function drawChar(x,y,ang,o){
   charEllipse(-r*0.1,0,r*0.92,r*(id==='gymbro'?1.12:0.97),o.body,true);
   ctx.save(); ctx.beginPath(); ctx.ellipse(-r*0.1,0,r*0.92,r*0.97,0,0,TAU); ctx.clip();
   ctx.fillStyle='rgba(0,0,0,.23)'; ctx.fillRect(-r,-r,r*0.55,r*2); ctx.fillStyle='rgba(255,240,200,.22)'; ctx.fillRect(-r*0.65,-r*0.86,r*0.85,r*0.18);
-  if(o.zombie){ ctx.fillStyle='#344c36'; ctx.beginPath(); ctx.moveTo(-r,-r*.6); ctx.lineTo(-r*.25,-r*.4); ctx.lineTo(-r*.8,-r*.1); ctx.lineTo(-r*.2,r*.25); ctx.lineTo(-r,r*.6); ctx.fill(); }
+  if(o.zombie){ ctx.fillStyle=tc('#344c36'); ctx.beginPath(); ctx.moveTo(-r,-r*.6); ctx.lineTo(-r*.25,-r*.4); ctx.lineTo(-r*.8,-r*.1); ctx.lineTo(-r*.2,r*.25); ctx.lineTo(-r,r*.6); ctx.fill(); }
   else if(/^(intern|receptionist|accountant|it)$/.test(id)){ ctx.fillStyle='#fff0ca'; ctx.beginPath(); ctx.moveTo(-r*.6,-r*.36); ctx.lineTo(r*.3,0); ctx.lineTo(-r*.6,r*.36); ctx.fill(); ctx.fillStyle=id==='accountant'?'#e9514e':'#33465b'; ctx.beginPath(); ctx.moveTo(-r*.6,-r*.1); ctx.lineTo(r*.2,0); ctx.lineTo(-r*.6,r*.1); ctx.fill(); }
   else if(/^(scientist|labtech|doctor|firstaid)$/.test(id)){ ctx.strokeStyle='#738c98'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(-r*.7,-r*.5); ctx.lineTo(r*.25,0); ctx.lineTo(-r*.7,r*.5); ctx.stroke(); ctx.fillStyle='#e9514e'; ctx.fillRect(-r*.4,r*.55,r*.14,r*.28); ctx.fillRect(-r*.48,r*.63,r*.3,r*.1); }
   else if(armed){ ctx.fillStyle='#35473d'; ctx.fillRect(-r*.7,-r*.7,r*.7,r*1.4); ctx.strokeStyle='#d6c18b'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.moveTo(-r*.55,-r*.7); ctx.lineTo(-r*.55,r*.7); ctx.moveTo(-r*.25,-r*.7); ctx.lineTo(-r*.25,r*.7); ctx.stroke(); }
@@ -6548,7 +6681,7 @@ function drawChar(x,y,ang,o){
   for(s=-1;s<=1;s+=2){ var reach=(o.zombie||o.push)?r*(1+(o.brace?.18:sw*.08)):-sw*s*r*.4, side=s*r*((o.zombie||o.push)?(o.brace?.42:.68):.94); // braced: arms forward and close
     charEllipse(reach-r*.18,side,r*.38,r*.27,o.body,true);
     charEllipse(reach+r*.1,side,r*.26,r*.25,id==='boxer'?'#e9514e':o.skin,true);
-    if(o.zombie&&o.lod===0){ ctx.strokeStyle='#fff0ca'; ctx.lineWidth=.8; ctx.beginPath(); ctx.moveTo(reach+r*.26,side-r*.1); ctx.lineTo(reach+r*.4,side-r*.1); ctx.moveTo(reach+r*.26,side+r*.08); ctx.lineTo(reach+r*.4,side+r*.08); ctx.stroke(); ctx.strokeStyle=o.outline||'#171923'; }
+    if(o.zombie&&o.lod===0){ ctx.strokeStyle=tc('#fff0ca'); ctx.lineWidth=.8; ctx.beginPath(); ctx.moveTo(reach+r*.26,side-r*.1); ctx.lineTo(reach+r*.4,side-r*.1); ctx.moveTo(reach+r*.26,side+r*.08); ctx.lineTo(reach+r*.4,side+r*.08); ctx.stroke(); ctx.strokeStyle=o.outline||'#171923'; }
   }
   if(o.lod===0&&o.icon){ Art.draw(o.icon,-r*.7,-r*.75,r*.72); }
   if(o.axe){ ctx.strokeStyle='#5c4934'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(0,r); ctx.lineTo(r*1.2,r*.9); ctx.stroke(); ctx.fillStyle='#e9514e'; ctx.strokeStyle='#171923'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(r,r*.6); ctx.lineTo(r*1.3,r*.5); ctx.lineTo(r*1.4,r*1.1); ctx.lineTo(r,r*1.2); ctx.fill(); ctx.stroke(); }
@@ -6558,10 +6691,10 @@ function drawChar(x,y,ang,o){
   ctx.save(); ctx.beginPath(); ctx.arc(hx,0,hr,0,TAU); ctx.clip(); ctx.fillStyle='rgba(0,0,0,.16)'; ctx.fillRect(hx-hr,-hr,hr*.36,hr*2); ctx.restore();
   if(o.zombie){
     if(o.hair&&o.lod===0){ ctx.fillStyle=o.hair; ctx.beginPath(); ctx.moveTo(hx-hr,-hr*.3); ctx.lineTo(hx-hr*.3,-hr); ctx.lineTo(hx,-hr*.75); ctx.lineTo(hx-hr*.1,-hr*.4); ctx.lineTo(hx-hr*.55,-hr*.3); ctx.fill(); }
-    charEllipse(hx+hr*.27,-hr*.37,hr*.32,hr*.3,'#fff0ca',true); charEllipse(hx+hr*.37,-hr*.36,hr*.14,hr*.14,'#e9514e',false);
-    charEllipse(hx+hr*.29,hr*.38,hr*.28,hr*.16,'#fff0ca',true); charEllipse(hx+hr*.4,hr*.38,hr*.1,hr*.1,'#e9514e',false);
-    charEllipse(hx+hr*.76,0,hr*.24,hr*.32,'#421e30',true); ctx.fillStyle='#fff0ca'; ctx.fillRect(hx+hr*.57,-hr*.24,hr*.16,hr*.14); ctx.fillRect(hx+hr*.78,hr*.05,hr*.13,hr*.18);
-    ctx.strokeStyle='#4b763f'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(hx-hr*.3,hr*.35); ctx.lineTo(hx+hr*.1,hr*.52); ctx.moveTo(hx-hr*.15,hr*.25); ctx.lineTo(hx-hr*.25,hr*.52); ctx.stroke();
+    charEllipse(hx+hr*.27,-hr*.37,hr*.32,hr*.3,tc('#fff0ca'),true); charEllipse(hx+hr*.37,-hr*.36,hr*.14,hr*.14,tc('#e9514e'),false);
+    charEllipse(hx+hr*.29,hr*.38,hr*.28,hr*.16,tc('#fff0ca'),true); charEllipse(hx+hr*.4,hr*.38,hr*.1,hr*.1,tc('#e9514e'),false);
+    charEllipse(hx+hr*.76,0,hr*.24,hr*.32,tc('#421e30'),true); ctx.fillStyle=tc('#fff0ca'); ctx.fillRect(hx+hr*.57,-hr*.24,hr*.16,hr*.14); ctx.fillRect(hx+hr*.78,hr*.05,hr*.13,hr*.18);
+    ctx.strokeStyle=tc('#4b763f'); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(hx-hr*.3,hr*.35); ctx.lineTo(hx+hr*.1,hr*.52); ctx.moveTo(hx-hr*.15,hr*.25); ctx.lineTo(hx-hr*.25,hr*.52); ctx.stroke();
   } else {
     ctx.fillStyle=o.hair||'#3a2930'; ctx.beginPath(); ctx.arc(hx,0,hr,Math.PI*.64,Math.PI*1.4); ctx.lineTo(hx-hr*.15,-hr*.3); ctx.lineTo(hx-hr*.55,hr*.1); ctx.fill();
     if(o.helmet||armed||id==='hazmat'||id==='chef'){
@@ -6578,86 +6711,107 @@ function drawChar(x,y,ang,o){
   }
   if(o.zombie&&o.helmet){ ctx.strokeStyle='#b7c4bd'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(hx,0,hr+1,Math.PI*.55,Math.PI*1.45); ctx.stroke(); }
   if(o.zombie&&o.feat&&o.lod===0) drawSkinFeat(o.feat,hx,0,hr,1,0,0,1);
-  ctx.restore();
+  if(o.zombie&&o.lod===0&&o.tone&&TONE_DEFS[o.tone]&&TONE_DEFS[o.tone].mech) drawMechFeat(hx,hr);
+  ctx.restore(); TC=tc0;
 }
-function drawPlayer(hd){
-  if(skinId()!=='zombie'){ drawMonsterPlayer(hd,skinId()); return; }
+/* The head in its colour: TC is the colour's remap for every literal the head's art reads through tc(). */
+function drawPlayer(hd){ var tc0=TC; TC=TONE_MAPS[toneKey()]||null; try{ if(skinId()!=='zombie') drawMonsterPlayer(hd,skinId()); else drawZombiePlayer(hd); } finally { TC=tc0; } }
+function drawZombiePlayer(hd){
   var r=hd.r, sw=Math.sin(G.walk), open=.45+.55*Math.min(1,G.chomp/.3), s,k;
   ctx.save(); ctx.translate(hd.x,hd.y); ctx.rotate(hd.h); ctx.lineJoin='round'; ctx.lineCap='round';
-  charEllipse(2,5,r*1.25,r*1.02,'rgba(0,0,0,.4)',false); ctx.strokeStyle=G.hurt>0?'#e9514e':'#171923'; ctx.lineWidth=2.3;
-  for(s=-1;s<=1;s+=2){ charEllipse(-r*.18+sw*s*r*.4,s*r*.5,r*.4,r*.24,'#27343c',true); ctx.strokeStyle='#596466'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(-r*.3+sw*s*r*.4,s*r*.5-r*.1); ctx.lineTo(sw*s*r*.4,s*r*.5-r*.1); ctx.stroke(); ctx.strokeStyle='#171923'; ctx.lineWidth=2.3; }
+  charEllipse(2,5,r*1.25,r*1.02,tc('rgba(0,0,0,.4)'),false); ctx.strokeStyle=G.hurt>0?'#e9514e':'#171923'; ctx.lineWidth=2.3;
+  for(s=-1;s<=1;s+=2){ charEllipse(-r*.18+sw*s*r*.4,s*r*.5,r*.4,r*.24,tc('#27343c'),true); ctx.strokeStyle=tc('#596466'); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(-r*.3+sw*s*r*.4,s*r*.5-r*.1); ctx.lineTo(sw*s*r*.4,s*r*.5-r*.1); ctx.stroke(); ctx.strokeStyle=tc('#171923'); ctx.lineWidth=2.3; }
   // A ripped midnight jacket, pale collar and a stolen red tie.
-  ctx.fillStyle='#375d57'; ctx.beginPath(); ctx.moveTo(-r*.6,-r*.92); ctx.lineTo(r*.34,-r*.83); ctx.lineTo(r*.72,-r*.44); ctx.lineTo(r*.6,r*.75); ctx.lineTo(-r*.45,r*.95); ctx.lineTo(-r*.65,r*.7); ctx.lineTo(-r*.85,r*.86); ctx.lineTo(-r,r*.45); ctx.lineTo(-r*.82,r*.25); ctx.lineTo(-r,-r*.1); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.strokeStyle='#80a67a'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(-r*.67,-r*.71); ctx.lineTo(-r*.2,-r*.78); ctx.stroke();
-  ctx.fillStyle='#dccda7'; ctx.beginPath(); ctx.moveTo(-r*.8,-r*.4); ctx.lineTo(r*.3,0); ctx.lineTo(-r*.8,r*.4); ctx.lineTo(-r*.45,0); ctx.fill();
-  ctx.fillStyle='#d65445'; ctx.beginPath(); ctx.moveTo(-r*.75,-r*.13); ctx.lineTo(-r*.22,0); ctx.lineTo(-r*.8,r*.15); ctx.lineTo(-r*.95,r*.07); ctx.fill();
-  ctx.strokeStyle='#171923'; ctx.lineWidth=2;
-  for(s=-1;s<=1;s+=2){ var reach=r*(1.02+.08*sw); charEllipse(reach-r*.4,s*r*.78,r*.48,r*.3,'#375d57',true); charEllipse(reach,s*r*.66,r*.3,r*.29,'#a9df57',true);
-    ctx.strokeStyle='#e5f5a6'; ctx.lineWidth=1.3; for(k=-1;k<=1;k++){ ctx.beginPath(); ctx.moveTo(reach+r*.17,s*r*.66+k*r*.12); ctx.lineTo(reach+r*.35,s*r*.66+k*r*.12); ctx.stroke(); } ctx.strokeStyle='#171923'; }
+  ctx.fillStyle=tc('#375d57'); ctx.beginPath(); ctx.moveTo(-r*.6,-r*.92); ctx.lineTo(r*.34,-r*.83); ctx.lineTo(r*.72,-r*.44); ctx.lineTo(r*.6,r*.75); ctx.lineTo(-r*.45,r*.95); ctx.lineTo(-r*.65,r*.7); ctx.lineTo(-r*.85,r*.86); ctx.lineTo(-r,r*.45); ctx.lineTo(-r*.82,r*.25); ctx.lineTo(-r,-r*.1); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle=tc('#80a67a'); ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(-r*.67,-r*.71); ctx.lineTo(-r*.2,-r*.78); ctx.stroke();
+  ctx.fillStyle=tc('#dccda7'); ctx.beginPath(); ctx.moveTo(-r*.8,-r*.4); ctx.lineTo(r*.3,0); ctx.lineTo(-r*.8,r*.4); ctx.lineTo(-r*.45,0); ctx.fill();
+  ctx.fillStyle=tc('#d65445'); ctx.beginPath(); ctx.moveTo(-r*.75,-r*.13); ctx.lineTo(-r*.22,0); ctx.lineTo(-r*.8,r*.15); ctx.lineTo(-r*.95,r*.07); ctx.fill();
+  ctx.strokeStyle=tc('#171923'); ctx.lineWidth=2;
+  for(s=-1;s<=1;s+=2){ var reach=r*(1.02+.08*sw); charEllipse(reach-r*.4,s*r*.78,r*.48,r*.3,tc('#375d57'),true); charEllipse(reach,s*r*.66,r*.3,r*.29,tc('#a9df57'),true);
+    ctx.strokeStyle=tc('#e5f5a6'); ctx.lineWidth=1.3; for(k=-1;k<=1;k++){ ctx.beginPath(); ctx.moveTo(reach+r*.17,s*r*.66+k*r*.12); ctx.lineTo(reach+r*.35,s*r*.66+k*r*.12); ctx.stroke(); } ctx.strokeStyle=tc('#171923'); }
   var hr=r*.73, hx=r*.2;
   ctx.translate(hx,0);
-  var skin=ctx.createLinearGradient(-hr,-hr,hr,hr); skin.addColorStop(0,'#d1ee78'); skin.addColorStop(.52,'#a9d95b'); skin.addColorStop(1,'#6fa944');
+  var skin=ctx.createLinearGradient(-hr,-hr,hr,hr); skin.addColorStop(0,tc('#d1ee78')); skin.addColorStop(.52,tc('#a9d95b')); skin.addColorStop(1,tc('#6fa944'));
   ctx.fillStyle=skin; ctx.beginPath(); ctx.moveTo(-hr*.88,-hr*.6); ctx.quadraticCurveTo(-hr*.42,-hr*1.07,hr*.22,-hr*.92); ctx.lineTo(hr*.8,-hr*.66); ctx.quadraticCurveTo(hr*1.12,-hr*.12,hr*.84,hr*.65); ctx.lineTo(hr*.32,hr*.92); ctx.quadraticCurveTo(-hr*.58,hr*1.07,-hr*.91,hr*.48); ctx.closePath(); ctx.fill(); ctx.stroke();
-  charEllipse(-hr*.3,hr*.97,hr*.19,hr*.12,'#89bd4d',true);
+  charEllipse(-hr*.3,hr*.97,hr*.19,hr*.12,tc('#89bd4d'),true);
   // Exposed brain patch, bone rim and three broad folds.
-  ctx.fillStyle='#fff0ca'; ctx.beginPath(); ctx.moveTo(-hr*.88,-hr*.46); ctx.lineTo(-hr*.61,-hr*.94); ctx.lineTo(-hr*.27,-hr*.94); ctx.lineTo(hr*.02,-hr*.64); ctx.lineTo(-hr*.14,-hr*.32); ctx.lineTo(-hr*.55,-hr*.21); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.fillStyle='#ec7492'; ctx.strokeStyle='#9f3f64'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(-hr*.75,-hr*.47); ctx.bezierCurveTo(-hr*.8,-hr*.84,-hr*.31,-hr*.93,-hr*.12,-hr*.63); ctx.quadraticCurveTo(hr*.02,-hr*.37,-hr*.45,-hr*.31); ctx.quadraticCurveTo(-hr*.67,-hr*.25,-hr*.75,-hr*.47); ctx.fill(); ctx.stroke();
+  ctx.fillStyle=tc('#fff0ca'); ctx.beginPath(); ctx.moveTo(-hr*.88,-hr*.46); ctx.lineTo(-hr*.61,-hr*.94); ctx.lineTo(-hr*.27,-hr*.94); ctx.lineTo(hr*.02,-hr*.64); ctx.lineTo(-hr*.14,-hr*.32); ctx.lineTo(-hr*.55,-hr*.21); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle=tc('#ec7492'); ctx.strokeStyle=tc('#9f3f64'); ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(-hr*.75,-hr*.47); ctx.bezierCurveTo(-hr*.8,-hr*.84,-hr*.31,-hr*.93,-hr*.12,-hr*.63); ctx.quadraticCurveTo(hr*.02,-hr*.37,-hr*.45,-hr*.31); ctx.quadraticCurveTo(-hr*.67,-hr*.25,-hr*.75,-hr*.47); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(-hr*.62,-hr*.74); ctx.quadraticCurveTo(-hr*.33,-hr*.75,-hr*.42,-hr*.46); ctx.moveTo(-hr*.64,-hr*.45); ctx.quadraticCurveTo(-hr*.52,-hr*.6,-hr*.25,-hr*.5); ctx.stroke();
   // One enormous bloodshot eye and a mean, half-shut one.
-  ctx.strokeStyle='#385337'; ctx.lineWidth=1.5; charEllipse(hr*.12,-hr*.48,hr*.34,hr*.33,'#fff6df',true); charEllipse(hr*.22,-hr*.48,hr*.18,hr*.19,'#e9514e',false); charEllipse(hr*.27,-hr*.48,hr*.08,hr*.1,'#171923',false); charEllipse(hr*.12,-hr*.6,hr*.055,hr*.055,'#fff',false);
-  ctx.strokeStyle='#cf7467'; ctx.lineWidth=.8; ctx.beginPath(); ctx.moveTo(-hr*.16,-hr*.64); ctx.lineTo(-hr*.02,-hr*.55); ctx.moveTo(hr*.03,-hr*.2); ctx.lineTo(hr*.07,-hr*.32); ctx.stroke();
-  ctx.strokeStyle='#385337'; ctx.lineWidth=1.5; ctx.fillStyle='#fff0ca'; ctx.beginPath(); ctx.moveTo(-hr*.06,hr*.4); ctx.lineTo(hr*.4,hr*.3); ctx.lineTo(hr*.34,hr*.55); ctx.lineTo(hr*.06,hr*.59); ctx.closePath(); ctx.fill(); ctx.stroke(); charEllipse(hr*.25,hr*.45,hr*.1,hr*.09,'#e9514e',false);
+  ctx.strokeStyle=tc('#385337'); ctx.lineWidth=1.5; charEllipse(hr*.12,-hr*.48,hr*.34,hr*.33,tc('#fff6df'),true); charEllipse(hr*.22,-hr*.48,hr*.18,hr*.19,tc('#e9514e'),false); charEllipse(hr*.27,-hr*.48,hr*.08,hr*.1,tc('#171923'),false); charEllipse(hr*.12,-hr*.6,hr*.055,hr*.055,tc('#fff'),false);
+  ctx.strokeStyle=tc('#cf7467'); ctx.lineWidth=.8; ctx.beginPath(); ctx.moveTo(-hr*.16,-hr*.64); ctx.lineTo(-hr*.02,-hr*.55); ctx.moveTo(hr*.03,-hr*.2); ctx.lineTo(hr*.07,-hr*.32); ctx.stroke();
+  ctx.strokeStyle=tc('#385337'); ctx.lineWidth=1.5; ctx.fillStyle=tc('#fff0ca'); ctx.beginPath(); ctx.moveTo(-hr*.06,hr*.4); ctx.lineTo(hr*.4,hr*.3); ctx.lineTo(hr*.34,hr*.55); ctx.lineTo(hr*.06,hr*.59); ctx.closePath(); ctx.fill(); ctx.stroke(); charEllipse(hr*.25,hr*.45,hr*.1,hr*.09,tc('#e9514e'),false);
   ctx.beginPath(); ctx.moveTo(-hr*.22,hr*.61); ctx.lineTo(hr*.32,hr*.72); ctx.stroke(); for(k=0;k<3;k++){ var stitch=-hr*.15+k*hr*.17; ctx.beginPath(); ctx.moveTo(stitch,hr*.53+k*hr*.034); ctx.lineTo(stitch-hr*.04,hr*.72+k*hr*.034); ctx.stroke(); }
   // Hinged black bite, uneven teeth and a small drool bead.
   var mx=hr*.7, mw=hr*(.15+.22*open), mh=hr*.39;
-  ctx.fillStyle='#391c2e'; ctx.strokeStyle='#171923'; ctx.lineWidth=1.7; ctx.beginPath(); ctx.moveTo(mx-mw,-mh); ctx.quadraticCurveTo(mx+mw*1.1,-mh*1.3,mx+mw,0); ctx.quadraticCurveTo(mx+mw*1.1,mh,mx-mw*.65,mh); ctx.quadraticCurveTo(mx-mw*1.4,0,mx-mw,-mh); ctx.fill(); ctx.stroke(); charEllipse(mx,mh*.38,mw*.65,mh*.4,'#a74055',false);
-  ctx.fillStyle='#fff0ca'; ctx.strokeStyle='#806b52'; ctx.lineWidth=.7;
+  ctx.fillStyle=tc('#391c2e'); ctx.strokeStyle=tc('#171923'); ctx.lineWidth=1.7; ctx.beginPath(); ctx.moveTo(mx-mw,-mh); ctx.quadraticCurveTo(mx+mw*1.1,-mh*1.3,mx+mw,0); ctx.quadraticCurveTo(mx+mw*1.1,mh,mx-mw*.65,mh); ctx.quadraticCurveTo(mx-mw*1.4,0,mx-mw,-mh); ctx.fill(); ctx.stroke(); charEllipse(mx,mh*.38,mw*.65,mh*.4,tc('#a74055'),false);
+  ctx.fillStyle=tc('#fff0ca'); ctx.strokeStyle=tc('#806b52'); ctx.lineWidth=.7;
   for(k=0;k<4;k++){ var yy=-mh*.76+k*mh*.49, len=hr*(k%2?.16:.22); ctx.beginPath(); ctx.moveTo(mx-mw*.9,yy-mh*.15); ctx.lineTo(mx-mw*.9+len,yy); ctx.lineTo(mx-mw*.85,yy+mh*.18); ctx.fill(); ctx.stroke(); }
   for(k=0;k<3;k++){ var yy2=-mh*.65+k*mh*.6; ctx.beginPath(); ctx.moveTo(mx+mw*.86,yy2-mh*.16); ctx.lineTo(mx+mw*.86-hr*.17,yy2); ctx.lineTo(mx+mw*.86,yy2+mh*.18); ctx.fill(); ctx.stroke(); }
-  charEllipse(mx+mw*.3,mh+hr*.14,hr*.08,hr*.17,'#c5e977',false);
+  charEllipse(mx+mw*.3,mh+hr*.14,hr*.08,hr*.17,tc('#c5e977'),false);
+  if(curTone().mech) drawMechHead('zombie',hr);
   ctx.restore();
 }
 
 function drawMonsterPlayer(hd,id){
-  var S=curSkin(),r=hd.r,hr=r*.85,sw=Math.sin(G.walk),k,s;
-  drawChar(hd.x,hd.y,hd.h,{r:r*1.04,body:S.body,skin:S.skin,hair:id==='mummy'?null:'#2a2636',zombie:true,moving:true,phase:G.walk,lod:0});
-  ctx.save(); ctx.translate(hd.x,hd.y); ctx.rotate(hd.h); ctx.strokeStyle='#171923'; ctx.lineWidth=2;
-  if(id==='vampire'){ ctx.fillStyle='#662c46'; ctx.beginPath(); ctx.moveTo(-r*.2,-r*.85); ctx.lineTo(-r*1.35,-r*.92); ctx.lineTo(-r*1.1,0); ctx.lineTo(-r*1.35,r*.92); ctx.lineTo(-r*.2,r*.85); ctx.closePath(); ctx.fill(); ctx.stroke(); }
-  if(id==='werewolf'){ ctx.fillStyle='#5a3a2b'; for(k=0;k<8;k++){ var a=Math.PI*.55+k*.38; ctx.beginPath(); ctx.moveTo(Math.cos(a)*r*.9,Math.sin(a)*r*.9); ctx.lineTo(Math.cos(a+.12)*r*1.2,Math.sin(a+.12)*r*1.2); ctx.lineTo(Math.cos(a+.24)*r*.84,Math.sin(a+.24)*r*.84); ctx.fill(); } }
+  var T=curTone(), S=T.S||curSkin(),r=hd.r,hr=r*.85,sw=Math.sin(G.walk),k,s;
+  drawChar(hd.x,hd.y,hd.h,{r:r*1.04,body:S.body,skin:S.skin,hair:id==='mummy'?null:tc('#2a2636'),zombie:true,moving:true,phase:G.walk,lod:0,tone:toneKey()});
+  ctx.save(); ctx.translate(hd.x,hd.y); ctx.rotate(hd.h); ctx.strokeStyle=tc('#171923'); ctx.lineWidth=2;
+  if(id==='vampire'){ ctx.fillStyle=tc('#662c46'); ctx.beginPath(); ctx.moveTo(-r*.2,-r*.85); ctx.lineTo(-r*1.35,-r*.92); ctx.lineTo(-r*1.1,0); ctx.lineTo(-r*1.35,r*.92); ctx.lineTo(-r*.2,r*.85); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if(id==='werewolf'){ ctx.fillStyle=tc('#5a3a2b'); for(k=0;k<8;k++){ var a=Math.PI*.55+k*.38; ctx.beginPath(); ctx.moveTo(Math.cos(a)*r*.9,Math.sin(a)*r*.9); ctx.lineTo(Math.cos(a+.12)*r*1.2,Math.sin(a+.12)*r*1.2); ctx.lineTo(Math.cos(a+.24)*r*.84,Math.sin(a+.24)*r*.84); ctx.fill(); } }
   ctx.translate(r*.16,0); charEllipse(0,0,hr,hr,S.skin,true);
-  if(id==='vampire'){ ctx.fillStyle='#302b40'; ctx.beginPath(); ctx.moveTo(-hr*.9,-hr*.45); ctx.quadraticCurveTo(-hr*.6,-hr*1.05,hr*.2,-hr*.94); ctx.lineTo(-hr*.25,-hr*.25); ctx.lineTo(-hr*.1,hr*.18); ctx.lineTo(-hr*.8,hr*.66); ctx.fill(); }
+  if(T.rim){ ctx.strokeStyle=T.rim; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(0,0,hr+1.7,0,TAU); ctx.stroke(); ctx.strokeStyle=tc('#171923'); ctx.lineWidth=2; } // dark fur still reads on a dark floor
+  if(id==='vampire'){ ctx.fillStyle=tc('#302b40'); ctx.beginPath(); ctx.moveTo(-hr*.9,-hr*.45); ctx.quadraticCurveTo(-hr*.6,-hr*1.05,hr*.2,-hr*.94); ctx.lineTo(-hr*.25,-hr*.25); ctx.lineTo(-hr*.1,hr*.18); ctx.lineTo(-hr*.8,hr*.66); ctx.fill(); }
   var ex=hr*.1,ey=-hr*.45,mx=hr*.7,mh=hr*.4;
-  for(s=-1;s<=1;s+=2){ ctx.fillStyle=id==='werewolf'?'#ffdb70':'#fff0ca'; ctx.beginPath(); ctx.moveTo(ex-hr*.26,s*hr*.47); ctx.lineTo(ex+hr*.34,s*hr*.28); ctx.lineTo(ex+hr*.24,s*hr*.6); ctx.closePath(); ctx.fill(); ctx.stroke(); charEllipse(ex+hr*.13,s*hr*.43,hr*.12,hr*.12,id==='werewolf'?'#3b2928':'#d54e61',false); }
-  charEllipse(mx,0,hr*(.19+.15*Math.min(1,G.chomp/.3)),mh,'#391c2e',true);
-  ctx.fillStyle='#fff0ca'; for(k=0;k<3;k++){ var yy=-mh*.6+k*mh*.6; ctx.beginPath(); ctx.moveTo(mx-hr*.22,yy-hr*.1); ctx.lineTo(mx+hr*.02,yy); ctx.lineTo(mx-hr*.22,yy+hr*.08); ctx.fill(); }
-  if(id==='werewolf'){ ctx.fillStyle='#d2aa81'; ctx.beginPath(); ctx.moveTo(hr*.2,-hr*.2); ctx.lineTo(hr*.88,-hr*.17); ctx.lineTo(hr*1.13,0); ctx.lineTo(hr*.85,hr*.2); ctx.lineTo(hr*.2,hr*.27); ctx.closePath(); ctx.fill(); ctx.stroke(); charEllipse(hr*.97,0,hr*.13,hr*.2,'#171923',false); }
-  drawPlayerSkin(id,hr,ex,ey,mx,mh); ctx.restore();
+  for(s=-1;s<=1;s+=2){ ctx.fillStyle=id==='werewolf'?tc('#ffdb70'):tc('#fff0ca'); ctx.beginPath(); ctx.moveTo(ex-hr*.26,s*hr*.47); ctx.lineTo(ex+hr*.34,s*hr*.28); ctx.lineTo(ex+hr*.24,s*hr*.6); ctx.closePath(); ctx.fill(); ctx.stroke(); charEllipse(ex+hr*.13,s*hr*.43,hr*.12,hr*.12,id==='werewolf'?tc('#3b2928'):tc('#d54e61'),false); }
+  charEllipse(mx,0,hr*(.19+.15*Math.min(1,G.chomp/.3)),mh,tc('#391c2e'),true);
+  ctx.fillStyle=tc('#fff0ca'); for(k=0;k<3;k++){ var yy=-mh*.6+k*mh*.6; ctx.beginPath(); ctx.moveTo(mx-hr*.22,yy-hr*.1); ctx.lineTo(mx+hr*.02,yy); ctx.lineTo(mx-hr*.22,yy+hr*.08); ctx.fill(); }
+  if(id==='werewolf'){ ctx.fillStyle=tc('#d2aa81'); ctx.beginPath(); ctx.moveTo(hr*.2,-hr*.2); ctx.lineTo(hr*.88,-hr*.17); ctx.lineTo(hr*1.13,0); ctx.lineTo(hr*.85,hr*.2); ctx.lineTo(hr*.2,hr*.27); ctx.closePath(); ctx.fill(); ctx.stroke(); charEllipse(hr*.97,0,hr*.13,hr*.2,tc('#171923'),false); }
+  drawPlayerSkin(id,hr,ex,ey,mx,mh); if(T.mech) drawMechHead(id,hr); ctx.restore();
 }
 
 function drawSkinFeat(f,hx,hy,hr,ca,sa,px,py){
   var s2;
-  if(f==='vampire'){ ctx.strokeStyle='#8e1b2b'; ctx.lineWidth=hr*0.45; ctx.beginPath(); ctx.arc(hx,hy,hr*1.05,Math.atan2(sa,ca)+Math.PI*0.55,Math.atan2(sa,ca)+Math.PI*1.45); ctx.stroke(); ctx.lineWidth=2; ctx.strokeStyle='#14121a'; }
-  else if(f==='werewolf'){ ctx.fillStyle='#5a3a22'; ctx.strokeStyle='#14121a'; ctx.lineWidth=1.5; for(s2=-1;s2<=1;s2+=2){ var ex=hx-ca*hr*0.45+px*s2*hr*0.7, ey=hy-sa*hr*0.45+py*s2*hr*0.7; ctx.beginPath(); ctx.moveTo(ex-ca*hr*0.25,ey-sa*hr*0.25); ctx.lineTo(ex+px*s2*hr*0.55,ey+py*s2*hr*0.55); ctx.lineTo(ex+ca*hr*0.25,ey+sa*hr*0.25); ctx.closePath(); ctx.fill(); ctx.stroke(); } }
-  else if(f==='mummy'){ ctx.strokeStyle='rgba(110,95,66,0.9)'; ctx.lineWidth=1.4; for(s2=-1;s2<=1;s2++){ var ox=hx+ca*s2*hr*0.35, oy=hy+sa*s2*hr*0.35; ctx.beginPath(); ctx.moveTo(ox+px*hr*0.9,oy+py*hr*0.9); ctx.lineTo(ox-px*hr*0.9+ca*hr*0.12,oy-py*hr*0.9+sa*hr*0.12); ctx.stroke(); } ctx.lineWidth=2; ctx.strokeStyle='#14121a'; }
+  if(f==='vampire'){ ctx.strokeStyle=tc('#8e1b2b'); ctx.lineWidth=hr*0.45; ctx.beginPath(); ctx.arc(hx,hy,hr*1.05,Math.atan2(sa,ca)+Math.PI*0.55,Math.atan2(sa,ca)+Math.PI*1.45); ctx.stroke(); ctx.lineWidth=2; ctx.strokeStyle=tc('#14121a'); }
+  else if(f==='werewolf'){ ctx.fillStyle=tc('#5a3a22'); ctx.strokeStyle=tc('#14121a'); ctx.lineWidth=1.5; for(s2=-1;s2<=1;s2+=2){ var ex=hx-ca*hr*0.45+px*s2*hr*0.7, ey=hy-sa*hr*0.45+py*s2*hr*0.7; ctx.beginPath(); ctx.moveTo(ex-ca*hr*0.25,ey-sa*hr*0.25); ctx.lineTo(ex+px*s2*hr*0.55,ey+py*s2*hr*0.55); ctx.lineTo(ex+ca*hr*0.25,ey+sa*hr*0.25); ctx.closePath(); ctx.fill(); ctx.stroke(); } }
+  else if(f==='mummy'){ ctx.strokeStyle=tc('rgba(110,95,66,0.9)'); ctx.lineWidth=1.4; for(s2=-1;s2<=1;s2++){ var ox=hx+ca*s2*hr*0.35, oy=hy+sa*s2*hr*0.35; ctx.beginPath(); ctx.moveTo(ox+px*hr*0.9,oy+py*hr*0.9); ctx.lineTo(ox-px*hr*0.9+ca*hr*0.12,oy-py*hr*0.9+sa*hr*0.12); ctx.stroke(); } ctx.lineWidth=2; ctx.strokeStyle=tc('#14121a'); }
 }
 /* The head's skin features, in its own frame (facing +x, head translated). */
 function drawPlayerSkin(id,hr,ex,ey,mx,mry){
   var k;
   if(id==='vampire'){
-    ctx.strokeStyle='#14121a'; ctx.lineWidth=hr*0.5+3; ctx.beginPath(); ctx.arc(0,0,hr*1.08,Math.PI*0.5,Math.PI*1.5); ctx.stroke();
-    ctx.strokeStyle='#8e1b2b'; ctx.lineWidth=hr*0.5; ctx.beginPath(); ctx.arc(0,0,hr*1.08,Math.PI*0.5,Math.PI*1.5); ctx.stroke();
-    ctx.strokeStyle='#d1495b'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,hr*1.25,Math.PI*0.6,Math.PI*1.4); ctx.stroke();
-    ctx.fillStyle='#fff'; ctx.strokeStyle='#14121a'; ctx.lineWidth=1; for(k=-1;k<=1;k+=2){ ctx.beginPath(); ctx.moveTo(mx-hr*0.06,k*mry*0.45); ctx.lineTo(mx+hr*0.28,k*mry*0.3); ctx.lineTo(mx-hr*0.06,k*mry*0.18); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.strokeStyle=tc('#14121a'); ctx.lineWidth=hr*0.5+3; ctx.beginPath(); ctx.arc(0,0,hr*1.08,Math.PI*0.5,Math.PI*1.5); ctx.stroke();
+    ctx.strokeStyle=tc('#8e1b2b'); ctx.lineWidth=hr*0.5; ctx.beginPath(); ctx.arc(0,0,hr*1.08,Math.PI*0.5,Math.PI*1.5); ctx.stroke();
+    ctx.strokeStyle=tc('#d1495b'); ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,hr*1.25,Math.PI*0.6,Math.PI*1.4); ctx.stroke();
+    ctx.fillStyle=tc('#fff'); ctx.strokeStyle=tc('#14121a'); ctx.lineWidth=1; for(k=-1;k<=1;k+=2){ ctx.beginPath(); ctx.moveTo(mx-hr*0.06,k*mry*0.45); ctx.lineTo(mx+hr*0.28,k*mry*0.3); ctx.lineTo(mx-hr*0.06,k*mry*0.18); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   } else if(id==='werewolf'){
-    ctx.fillStyle='#5a3a22'; ctx.strokeStyle='#14121a'; ctx.lineWidth=2;
-    for(k=-1;k<=1;k+=2){ ctx.beginPath(); ctx.moveTo(-hr*0.55,k*hr*0.45); ctx.lineTo(-hr*0.35,k*hr*1.35); ctx.lineTo(-hr*0.05,k*hr*0.75); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle='#d9a37a'; ctx.beginPath(); ctx.moveTo(-hr*0.42,k*hr*0.62); ctx.lineTo(-hr*0.33,k*hr*1.08); ctx.lineTo(-hr*0.16,k*hr*0.78); ctx.closePath(); ctx.fill(); ctx.fillStyle='#5a3a22'; }
-    ctx.strokeStyle='#3a2414'; ctx.lineWidth=1.5; for(k=0;k<6;k++){ var a=Math.PI*0.6+k*0.16; ctx.beginPath(); ctx.moveTo(Math.cos(a)*hr*0.85,Math.sin(a)*hr*0.85); ctx.lineTo(Math.cos(a+0.05)*hr*1.12,Math.sin(a+0.05)*hr*1.12); ctx.stroke(); }
+    ctx.fillStyle=tc('#5a3a22'); ctx.strokeStyle=tc('#14121a'); ctx.lineWidth=2;
+    for(k=-1;k<=1;k+=2){ ctx.beginPath(); ctx.moveTo(-hr*0.55,k*hr*0.45); ctx.lineTo(-hr*0.35,k*hr*1.35); ctx.lineTo(-hr*0.05,k*hr*0.75); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle=tc('#d9a37a'); ctx.beginPath(); ctx.moveTo(-hr*0.42,k*hr*0.62); ctx.lineTo(-hr*0.33,k*hr*1.08); ctx.lineTo(-hr*0.16,k*hr*0.78); ctx.closePath(); ctx.fill(); ctx.fillStyle=tc('#5a3a22'); }
+    ctx.strokeStyle=tc('#3a2414'); ctx.lineWidth=1.5; for(k=0;k<6;k++){ var a=Math.PI*0.6+k*0.16; ctx.beginPath(); ctx.moveTo(Math.cos(a)*hr*0.85,Math.sin(a)*hr*0.85); ctx.lineTo(Math.cos(a+0.05)*hr*1.12,Math.sin(a+0.05)*hr*1.12); ctx.stroke(); }
   } else if(id==='mummy'){
-    ctx.strokeStyle='rgba(110,95,66,0.9)'; ctx.lineWidth=2.2;
+    ctx.strokeStyle=tc('rgba(110,95,66,0.9)'); ctx.lineWidth=2.2;
     for(k=0;k<4;k++){ var y0=-hr*0.85+k*hr*0.55; ctx.beginPath(); ctx.moveTo(-hr*0.95,y0); ctx.quadraticCurveTo(0,y0+hr*0.25,hr*0.9,y0-hr*0.05); ctx.stroke(); }
-    ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.fillStyle='rgba(255,220,90,0.55)'; ctx.beginPath(); ctx.arc(ex,ey,hr*0.42,0,TAU); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.fillStyle=tc('rgba(255,220,90,0.55)'); ctx.beginPath(); ctx.arc(ex,ey,hr*0.42,0,TAU); ctx.fill(); ctx.restore();
   }
 }
+/* The mech colours (Rampage, 17:00 as that monster): steel plates over the same face. Head frame, facing +x, after the
+   skin features: a seam round the crown, a bolted back plate, rivets, a brushed highlight and the LED glow at the eyes. */
+function drawMechHead(id,hr){
+  var T=curTone(), glow=T.glow||'79,240,255', k, ey=id==='zombie'?[[hr*.12,-hr*.48]]:[[hr*.23,-hr*.43],[hr*.23,hr*.43]];
+  ctx.save(); ctx.lineCap='round';
+  ctx.fillStyle='#4a525b'; ctx.strokeStyle='#171923'; ctx.lineWidth=1.4; rr(-hr*1.08,-hr*.2,hr*.26,hr*.4,2); ctx.fill(); ctx.stroke(); // the bolted back plate
+  ctx.strokeStyle='#22282e'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(-hr*.25,-hr*.97); ctx.quadraticCurveTo(-hr*.02,0,-hr*.28,hr*.97); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-hr*.92,hr*.04); ctx.lineTo(-hr*.24,hr*.02); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.arc(0,0,hr*.8,Math.PI*1.12,Math.PI*1.38); ctx.stroke(); // brushed steel
+  var rv=[[-.58,-.6],[-.64,.45],[-.08,-.82],[-.14,.8],[.46,.72],[-.95,-.1],[-.95,.1]];
+  for(k=0;k<rv.length;k++){ charEllipse(hr*rv[k][0],hr*rv[k][1],hr*.065,hr*.065,'#5a636c',false); charEllipse(hr*rv[k][0]-hr*.02,hr*rv[k][1]-hr*.02,hr*.025,hr*.025,'#dfe7ee',false); }
+  ctx.globalCompositeOperation='lighter'; var pulse=0.28+0.08*Math.sin(G.t*5);
+  for(k=0;k<ey.length;k++){ ctx.fillStyle='rgba('+glow+','+pulse+')'; ctx.beginPath(); ctx.arc(ey[k][0],ey[k][1],hr*.36,0,TAU); ctx.fill(); ctx.fillStyle='rgba('+glow+','+(pulse+.25)+')'; ctx.beginPath(); ctx.arc(ey[k][0],ey[k][1],hr*.15,0,TAU); ctx.fill(); }
+  ctx.restore();
+}
+/* A mob zombie in a mech colour: one seam and a rivet (its LED eyes come from the colour's remap). */
+function drawMechFeat(hx,hr){ ctx.strokeStyle='#22282e'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(hx-hr*.2,-hr*.9); ctx.quadraticCurveTo(hx,0,hx-hr*.25,hr*.9); ctx.stroke(); charEllipse(hx-hr*.6,0,hr*.12,hr*.12,'#dfe7ee',false); ctx.strokeStyle='#171923'; ctx.lineWidth=1.8; }
 /* Three staff badges per floor (0-8): one in the side room, one somewhere risky (a nest, fire, acid), one off the route.
    Collected badges are saved at once and show as ghosts after; nine from one building unlock that building's skin. */
 /* Can you walk from the entry to (x,y)? A 20px flood over navBlocked, built once per floor for placement checks (a
@@ -6720,10 +6874,10 @@ function drawBats(){ var bs=G.bats; if(!bs) return; ctx.fillStyle='#14121a';
   for(var i=0;i<bs.length;i++){ var b=bs[i], f=Math.sin(G.t*30+b.ph), a=1-b.t/b.life; ctx.globalAlpha=Math.max(0,a);
     ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.quadraticCurveTo(b.x-6,b.y-4*f-2,b.x-9,b.y+1); ctx.quadraticCurveTo(b.x-5,b.y,b.x,b.y+2); ctx.quadraticCurveTo(b.x+5,b.y,b.x+9,b.y+1); ctx.quadraticCurveTo(b.x+6,b.y-4*f-2,b.x,b.y); ctx.fill(); }
   ctx.globalAlpha=1; }
-function drawWraps(){ var ws=G.wraps; if(!ws) return;
+function drawWraps(){ var ws=G.wraps; if(!ws) return; var tc0=TC, T=curTone(); TC=TONE_MAPS[toneKey()]||null;
   for(var i=0;i<ws.length;i++){ var w=ws[i], a=Math.min(1,w.t/0.6); ctx.save(); ctx.translate(w.x,w.y); ctx.rotate(w.a+Math.sin(i)*0.4); ctx.globalAlpha=0.85*a;
-    ctx.fillStyle='#e8dcbc'; ctx.fillRect(-12,-3,24,6); ctx.strokeStyle='rgba(110,95,66,0.8)'; ctx.lineWidth=1; ctx.strokeRect(-12,-3,24,6); ctx.restore(); }
-  ctx.globalAlpha=1; }
+    ctx.fillStyle=T.S?T.S.skin:'#e8dcbc'; ctx.fillRect(-12,-3,24,6); ctx.strokeStyle=tc('rgba(110,95,66,0.8)'); ctx.lineWidth=1; ctx.strokeRect(-12,-3,24,6); ctx.restore(); }
+  ctx.globalAlpha=1; TC=tc0; }
 
 /* Electric Zombie arcs get louder with rank (owner, 6 Oct): rank 1 a single bolt, rank 2 forks twice and flares at the
    target, rank 3 forks four times with a white-hot core, a flash and a crackling aura. Same mechanics at every rank. */
@@ -7160,7 +7314,8 @@ function drawExitArrow(){
    or the nearest plate nobody is standing on. Null when the door is open or there is nothing to point at. */
 function lockTarget(){
   var F=G.F, d=F&&F.pdoor, i; if(!d||d.open) return null;
-  if(d.puzzle==='key'){ for(i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(h.key&&!h.dead) return {x:h.x,y:h.y,label:'keycard',kind:'key'}; } return null; }
+  if(d.puzzle==='key'){ for(i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(h.key&&!h.dead) return {x:h.x,y:h.y,label:'keycard',kind:'key'}; }
+    for(i=0;i<G.proj.length;i++){ var c=G.proj[i]; if(c.kind==='card'&&!c.dead) return {x:c.x,y:c.y,label:'keycard',kind:'key'}; } return null; } // in the air or on the floor
   var ps=F.plates||[], best=null, bd=1e9; for(i=0;i<ps.length;i++){ var p=ps[i], dd=Math.hypot(p.x-G.head.x,p.y-G.head.y)+(p.pressed?1e6:0); if(dd<bd){ bd=dd; best=p; } }
   return best?{x:best.x,y:best.y,label:'plate',kind:'plates'}:null;
 }
@@ -7228,7 +7383,7 @@ function drawOneBoss(b){
 function draw(){
   CHAR_TICK++; ctx.fillStyle='#0f0d14'; ctx.fillRect(0,0,W,H);
   if(!G) return;
-  var hd=G.head, F=G.F, lv=G.lv, st=G.st, cx=G.cam.x, cy=G.cam.y, i, o, SKN=curSkin(), SKF=skinId()==='zombie'?null:skinId();
+  var hd=G.head, F=G.F, lv=G.lv, st=G.st, cx=G.cam.x, cy=G.cam.y, i, o, SKF=skinId()==='zombie'?null:skinId(), TSK=curTone().skin, TKEY=toneKey();
   var vx0=cx-W/2-60, vx1=cx+W/2+60, vy0=cy-H/2-60, vy1=cy+H/2+60;
   var shx=G.shake>0?(Math.random()-0.5)*14*G.shake:0, shy=G.shake>0?(Math.random()-0.5)*14*G.shake:0;
   ctx.save();
@@ -7295,22 +7450,23 @@ function draw(){
     if(o.kind==='bullet'){ ctx.save(); ctx.translate(o.x,o.y); ctx.rotate(Math.atan2(o.vy,o.vx)); ctx.fillStyle='#ffc65a'; ctx.strokeStyle='#171923'; ctx.lineWidth=.7; ctx.beginPath(); ctx.moveTo(3,0); ctx.lineTo(-2,-2); ctx.lineTo(-9,0); ctx.lineTo(-2,2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle='#fff0ca'; ctx.fillRect(-2,-.7,4,1.4); ctx.restore(); }
     else if(o.kind==='bolt'){ ctx.strokeStyle='#3b2a18'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(o.x-Math.cos(o.a)*14,o.y-Math.sin(o.a)*14); ctx.lineTo(o.x,o.y); ctx.stroke(); ctx.fillStyle='#c9ccd3'; ctx.beginPath(); ctx.arc(o.x,o.y,2.5,0,TAU); ctx.fill(); }
     else if(o.kind==='thrown'){ ctx.save(); ctx.translate(o.x,o.y); ctx.rotate(o.rot); Art.draw(o.icon,0,1,20); ctx.restore(); }
+    else if(o.kind==='card') drawCard(o);
     else if(o.kind==='bile'){ ctx.fillStyle='#8fd14f'; ctx.strokeStyle='#2f5a1a'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(o.x,o.y,6,0,TAU); ctx.fill(); ctx.stroke(); ctx.fillStyle='#55efc4'; ctx.beginPath(); ctx.arc(o.x-2,o.y-2,2,0,TAU); ctx.fill(); }
     else if(o.kind==='grenade'){ ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(o.x,o.y+4,7,4,0,0,TAU); ctx.fill(); var gy=o.y-o.hgt*46; ctx.fillStyle='#3f5a2a'; ctx.strokeStyle='#14121a'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(o.x,gy,6+o.hgt*2,0,TAU); ctx.fill(); ctx.stroke(); ctx.fillStyle=o.landed&&Math.sin(G.t*40)>0?'#ff4b4b':'#8a9099'; ctx.fillRect(o.x-2,gy-10,4,5); }
   }
 
-  var drawMobOf=function(){ var SKN=curSkin(), SKF=skinId()==='zombie'?null:skinId(), i; // the bound player's look
+  var drawMobOf=function(){ var SKF=skinId()==='zombie'?null:skinId(), TSK=curTone().skin, TKEY=toneKey(), i; // the bound player's look
   for(i=G.segs.length-1;i>=0;i--){
     var s=G.segs[i];
     if(s.x<vx0||s.x>vx1||s.y<vy0||s.y>vy1) continue;
     var help=s.helpT>0, ang=s.tang+(help?0:Math.sin(G.t*2+s.ph)*0.35), jx=G.surgeTell>0?(Math.random()-0.5)*3:0, jy=G.surgeTell>0?(Math.random()-0.5)*3:0;
-    drawCharCached(s.x+jx,s.y+jy,ang,{r:SEG_R,body:s.ty.color,skin:SKN.skin,feat:SKF,hair:s.hair,zombie:true,moving:s.moving,phase:G.walk*0.8+s.ph,icon:i<120?s.ty.icon:null,lod:i<160?0:1,helmet:s.hp>1,brace:help});
+    drawCharCached(s.x+jx,s.y+jy,ang,{r:SEG_R,body:s.ty.color,skin:TSK,tone:TKEY,feat:SKF,hair:s.hair,zombie:true,moving:s.moving,phase:G.walk*0.8+s.ph,icon:i<120?s.ty.icon:null,lod:i<160?0:1,helmet:s.hp>1,brace:help});
     if(s.hitFx>0){ ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(s.x+jx,s.y+jy,SEG_R+1,0,TAU); ctx.fill(); } // hit: a frame or two of white
   }
   };
   if(G.match) forPlayers(function(P){ if(P.alive) drawMobOf(); }); else drawMobOf();
 
-  for(i=0;i<G.strays.length;i++){ var sy=G.strays[i]; if(sy.dead||sy.x<vx0||sy.x>vx1||sy.y<vy0||sy.y>vy1) continue; var sp2=0.5+0.5*Math.sin(G.t*(sy.docile?2.2:5)+sy.ph), mad=sy.rageT>0, tell=sy.tellT>0, flick=tell&&Math.sin(G.t*40)>0, sxj=tell?(Math.random()-0.5)*4:0, syj=tell?(Math.random()-0.5)*4:0, rc=(mad||flick||sy.hostile)?'255,90,102':'143,209,79'; /* a ghost's summons glow red, never "yours" */ if(!(sy.flyT>0)){ ctx.fillStyle='rgba('+rc+','+(0.12+0.16*sp2)+')'; ctx.beginPath(); ctx.arc(sy.x+sxj,sy.y+syj,SEG_R+10,0,TAU); ctx.fill(); ctx.strokeStyle='rgba('+rc+','+(0.5+0.4*sp2)+')'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(sy.x+sxj,sy.y+syj,SEG_R+6,0,TAU); ctx.stroke(); } var syo={r:SEG_R,body:sy.ty.color,skin:SKN.skin,feat:SKF,hair:sy.hair,zombie:true,moving:sy.moving,phase:sy.walk,icon:sy.ty.icon,lod:0,outline:mad?'#b3202b':'#2f5a1a',push:mad}; if(sy.flyT>0) drawFlying(sy,syo); else drawCharCached(sy.x+sxj,sy.y+syj,sy.h,syo); if(sy.hitFx>0){ ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(sy.x+sxj,sy.y+syj,SEG_R+1,0,TAU); ctx.fill(); } }
+  for(i=0;i<G.strays.length;i++){ var sy=G.strays[i]; if(sy.dead||sy.x<vx0||sy.x>vx1||sy.y<vy0||sy.y>vy1) continue; var sp2=0.5+0.5*Math.sin(G.t*(sy.docile?2.2:5)+sy.ph), mad=sy.rageT>0, tell=sy.tellT>0, flick=tell&&Math.sin(G.t*40)>0, sxj=tell?(Math.random()-0.5)*4:0, syj=tell?(Math.random()-0.5)*4:0, rc=(mad||flick||sy.hostile)?'255,90,102':'143,209,79'; /* a ghost's summons glow red, never "yours" */ if(!(sy.flyT>0)){ ctx.fillStyle='rgba('+rc+','+(0.12+0.16*sp2)+')'; ctx.beginPath(); ctx.arc(sy.x+sxj,sy.y+syj,SEG_R+10,0,TAU); ctx.fill(); ctx.strokeStyle='rgba('+rc+','+(0.5+0.4*sp2)+')'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(sy.x+sxj,sy.y+syj,SEG_R+6,0,TAU); ctx.stroke(); } var syo={r:SEG_R,body:sy.ty.color,skin:TSK,tone:TKEY,feat:SKF,hair:sy.hair,zombie:true,moving:sy.moving,phase:sy.walk,icon:sy.ty.icon,lod:0,outline:mad?'#b3202b':'#2f5a1a',push:mad}; if(sy.flyT>0) drawFlying(sy,syo); else drawCharCached(sy.x+sxj,sy.y+syj,sy.h,syo); if(sy.hitFx>0){ ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(sy.x+sxj,sy.y+syj,SEG_R+1,0,TAU); ctx.fill(); } }
   var drawHeadA=function(){ var hd=G.head;
   if(G.inv>0){ ctx.strokeStyle='rgba(239,231,210,'+(0.4+0.3*Math.sin(G.t*20))+')'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(hd.x,hd.y,hd.r+8,0,TAU); ctx.stroke(); }
   if(G.burnT>0){ ctx.save(); ctx.globalCompositeOperation='lighter'; var bg2=ctx.createRadialGradient(hd.x,hd.y,2,hd.x,hd.y,hd.r*2.4); bg2.addColorStop(0,'rgba(255,140,40,0.45)'); bg2.addColorStop(1,'rgba(255,60,0,0)'); ctx.fillStyle=bg2; ctx.beginPath(); ctx.arc(hd.x,hd.y,hd.r*2.4,0,TAU); ctx.fill(); ctx.restore(); }
@@ -7584,13 +7740,23 @@ function renderCity(){
   var free=META.free&&META.free.unlocked, html='<div class="modes">'
     +'<div class="mode rampmode"><div class="an">RAMPAGE</div><div class="ab">Test yourself.</div>'+(META.ramp&&META.ramp.runs>0?'<div class="rec">Best '+fmt(META.ramp.bestT)+' · horde '+META.ramp.bestMob+'</div>':'')+'<button class="big ramp" data-ramp="1">RAMPAGE</button></div>'
     +'<div class="mode storymode"><div class="an">STORY</div><div class="ab">Office, gym, lab, city.</div><button class="big" data-play="downtown">EAT</button>'+(free?'<br><button class="link" data-free="1">free roam</button>':'')+'</div></div>';
-  var skinsKnown=Object.keys(META.badges||{}).length>0||['vampire','werewolf','mummy'].some(skinUnlocked); // skins appear once you have found a badge
+  var skinsKnown=Object.keys(META.badges||{}).length>0||['vampire','werewolf','mummy'].some(skinUnlocked)||Object.keys(META.toneOwn||{}).length>0; // skins appear once you have found a badge or earned a colour
   if(skinsKnown) html+='<div class="skinrow">'; else html+='<div class="skinrow" hidden>';
-  ['zombie','vampire','werewolf','mummy'].forEach(function(sid){ var S=SKINS[sid], un=skinUnlocked(sid), on=skinId()===sid;
+  ['zombie','vampire','werewolf','mummy'].forEach(function(sid){ var S=SKINS[sid], un=skinUnlocked(sid), on=wornSkin()===sid; // the saved skin, never one a Rampage lent
     html+='<button class="skin'+(on?' on':'')+(un?'':' locked')+'" data-skin="'+sid+'"'+(un?'':' aria-disabled="true"')+' title="'+S.name+': '+S.sig+(un?'':' Collect all nine '+S.set+' badges.')+'">'+S.icon+'<small>'+(un?S.name:':lock: '+setCount(S.set)+'/9')+'</small></button>'; });
-  html+='</div><div class="soon">'+DISTRICTS.filter(function(d){ return !d.open; }).map(function(d){ return d.name; }).join(', ')+': COMING SOON</div>';
+  html+='</div>'+(skinsKnown&&toneOpen?toneRow():'')+'<div class="soon">'+DISTRICTS.filter(function(d){ return !d.open; }).map(function(d){ return d.name; }).join(', ')+': COMING SOON</div>';
   $('cityBody').innerHTML=Art.rich(html);
 }
+/* The colour strip (owner, 20 Oct): tap the monster you wear and its colours open under the row; a locked dot says how
+   to earn it. It always shows the saved skin, never a colour Rampage lent. */
+var toneOpen=false, toneMsg='';
+function wornSkin(){ return META.skin&&skinUnlocked(META.skin)?META.skin:'zombie'; }
+function toneRow(){ var mon=wornSkin(), L=TONES[mon], cur=toneId(mon), h='<div class="tonerow">', i;
+  for(i=0;i<L.length;i++){ var t=L[i], own=toneOwned(mon,t.id);
+    h+='<button class="tone'+(own&&t.id===cur?' on':'')+(own?'':' locked')+(t.mech?' mech':'')+'" data-tone="'+t.id+'" aria-label="'+t.full+(own?'':' (locked)')+'" title="'+t.full+'"><i style="--tc:'+t.skin+'"></i>'+(own?'':':lock:')+'</button>'; }
+  return h+'</div><div class="tonehow">'+toneMsg+'</div>'; }
+function tapSkin(id){ if(!skinUnlocked(id)) return false; if(id===wornSkin()) toneOpen=!toneOpen; else { equipSkin(id); toneOpen=true; } toneMsg=''; renderCity(); return true; }
+function tapTone(id){ var mon=wornSkin(); if(!toneDef(mon,id)) return false; if(toneOwned(mon,id)){ equipTone(mon,id); toneMsg=''; } else toneMsg=toneHow(mon,id); renderCity(); return true; }
 function openCity(){ renderCity(); $('title').classList.add('hidden'); $('city').classList.remove('hidden'); }
 function closeCity(){ $('city').classList.add('hidden'); $('title').classList.remove('hidden'); }
 /* Start a run in an area. Only open areas start; today that is Downtown. */
@@ -7603,7 +7769,8 @@ $('cityBody').addEventListener('click',function(e){ var b=e.target.closest('butt
   if(pl){ playDistrict(pl); return; }
   if(b.getAttribute('data-free')){ startFreeRoam(); return; }
   if(b.getAttribute('data-ramp')){ startRampage(); return; }
-  if(sk2&&skinUnlocked(sk2)){ equipSkin(sk2); renderCity(); } });
+  var tn=b.getAttribute('data-tone'); if(tn){ tapTone(tn); return; }
+  if(sk2) tapSkin(sk2); });
 $('btnSkills').addEventListener('click',function(){ openSkills('title'); });
 $('teaserLink').textContent=TEASER.strip;
 $('teaserLink').addEventListener('click',openTeaser);
@@ -7651,7 +7818,7 @@ function starterGo(){ if(starterFrom==='ramp'){ if(rampPicks.length!==RAMP_PICKS
   if(!starterFrom||!starterSel||starters().indexOf(starterSel)<0) return false; var id=starterSel; $('starter').classList.add('hidden'); starterFrom=null; start(id); return true; }
 /* A fresh campaign. Free-roam restoration calls launchRun directly and never sees a starter. */
 function start(starter){
-  lastMode='campaign'; launchRun();
+  lastMode='campaign'; launchRun(); G.runSkin=skinId(); // the colours a campaign earns are this monster's
   if(starter&&grantStarter(starter)){ META.starter=starter; saveMeta(); }
   updateHud();
 }
@@ -7736,6 +7903,7 @@ function gameOver(){
   var top=null;
   for(var k in ABIL){ if(G.stacks[k]>0&&(!top||G.stacks[k]>G.stacks[top])) top=k; }
   $('oVerdict').textContent=top?'Your strongest power was '+ABIL[top].name+' ×'+G.stacks[top]+'. Not enough.':'You never got a bite in. Harsh.';
+  if(rec&&G.ramp&&G.ramp.toneNew) $('oVerdict').textContent=G.ramp.toneNew.full+' unlocked. Pick it in Pick an Area.'; // the mech this run earned
   $('over').classList.remove('hidden');
 }
 
