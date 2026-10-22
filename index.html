@@ -118,7 +118,16 @@ button.mid.revive{ display:block; margin:10px auto 0; background:var(--amber); }
 #surgeFill{ height:100%; width:0; background:var(--zombie); }
 #surgeWrap.full{ border-color:var(--amber); animation:blink .45s steps(2,start) infinite; }
 #surgeWrap.full #surgeFill{ background:var(--amber); }
-#chips{ display:flex; flex-wrap:nowrap; overflow:hidden; gap:5px; }
+#chips{ display:flex; flex-wrap:nowrap; overflow:hidden; gap:5px; min-width:0; }
+.chiprow{ display:flex; gap:5px; min-width:0; }
+/* The heart power's timer (owner, 19 Oct): the heart in a ring that drains in the power's colour, and the seconds left.
+   Full strength while it runs (the eaten chips beside it are faded); the last three seconds blink. */
+#powerChip{ flex:none; padding-left:2px; }
+#powerChip.hidden{ display:none; }
+#powerChip .pring{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:conic-gradient(var(--c) calc(var(--f,1) * 360deg),rgba(239,231,210,.16) 0); }
+#powerChip .pring .h-icon{ width:15px; height:15px; }
+#powerChip b{ font:15px var(--display); letter-spacing:1px; min-width:1.6em; }
+#powerChip.ending{ animation:blink .5s steps(2,start) infinite; }
 /* One quiet row (owner, 16 Oct): the top five powers, faded until one gains a stack; the full list is on pause. */
 #chips .chip{ opacity:.38; }
 #chips .chip.pop{ animation:chipPop 1.1s ease-out forwards; }
@@ -133,7 +142,7 @@ button.mid.revive{ display:block; margin:10px auto 0; background:var(--amber); }
 #brainRing{ width:8px; height:8px; border-radius:50%; background:conic-gradient(#ff9ec4 calc(var(--f,0) * 360deg),rgba(239,231,210,.22) 0); box-shadow:0 0 0 1px #171923; }
 #floorline.hot{ animation:hot .5s steps(2,start) infinite; }
 @keyframes hot{ to{ text-shadow:0 0 6px #ff8c1a,0 1px 3px #000; } }
-@media (prefers-reduced-motion: reduce){ #chips .chip.pop{ animation:none; opacity:1; } #floorline.hot{ animation:none; } }
+@media (prefers-reduced-motion: reduce){ #chips .chip.pop{ animation:none; opacity:1; } #floorline.hot{ animation:none; } #powerChip.ending{ animation:none; } }
 .chip{ background:rgba(15,13,20,.78); border:2px solid var(--c); border-radius:999px; padding:2px 8px 2px 5px; font-size:14px; display:inline-flex; align-items:center; gap:4px; line-height:1.2; }
 .chip b{ font-size:12px; color:var(--bone); }
 
@@ -232,6 +241,17 @@ button.mid{ margin-top:10px; font-family:var(--display); font-weight:400; font-s
 button.big,button.mid{ border-radius:3px; }
 button.mid .h-icon{ width:24px; height:24px; }
 #howto .card{ background:linear-gradient(135deg,#f6edda,#dfd3b4); box-shadow:2px 3px 0 rgba(28,26,36,.18); border-radius:3px; }
+/* How to play as picture cards (owner, 21 Oct: "way too text heavy"): a badge, a word, one line; tap for the detail. */
+.howto.hcards{ display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:8px; }
+.hcard{ display:flex; align-items:flex-start; gap:8px; text-align:left; font:600 13px var(--font); line-height:1.3; color:var(--ink); background:linear-gradient(135deg,#f6edda,#dfd3b4); border:2px solid var(--ink); border-radius:3px; padding:7px 8px; box-shadow:2px 2px 0 rgba(28,26,36,.2); cursor:pointer; margin:0; }
+.hcard .hci{ flex:none; } .hcard .hci .h-icon{ width:34px; height:34px; }
+.hct{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+.hct b{ font:18px var(--display); letter-spacing:1px; font-weight:400; }
+.hcm{ display:none; font-weight:500; font-size:12.5px; margin-top:4px; }
+.hcm .h-icon{ width:16px; height:16px; vertical-align:-3px; }
+.hcard.open{ grid-column:1/-1; background:var(--bone2); }
+.hcard.open .hcm{ display:block; }
+@media(max-width:340px){ .howto.hcards{ grid-template-columns:1fr; } }
 .codex-sec{ display:flex; align-items:center; gap:6px; padding-bottom:5px; border-bottom:2px solid rgba(28,26,36,.25); }
 .node{ background:linear-gradient(145deg,#f5ebd4,#ded1b0); box-shadow:2px 3px 0 rgba(28,26,36,.15); border-radius:3px; }
 .node .top{ gap:5px; line-height:1.2; min-height:38px; }
@@ -389,7 +409,7 @@ button.pick .ds{ color:#4a4458; }
   </div>
   <div id="floorline"></div>
   <div id="slotRow" class="slots"></div>
-  <div id="chips"></div>
+  <div class="chiprow"><span id="powerChip" class="chip power hidden" title="Heart power: seconds left"><i class="pring"><span data-h-icon="heart"></span></i><b id="powerN"></b></span><div id="chips"></div></div>
   <button class="mid revive hidden" id="btnRecall">WATCH · CALL THEM BACK</button>
 </div>
 <div id="banner" role="status"></div>
@@ -405,14 +425,14 @@ button.pick .ds{ color:#4a4458; }
     <div class="best" id="bestTitle"></div>
     <button class="link" id="teaserLink"></button>
     <div id="howto" class="hidden">
-    <div class="howto">
-      <p><b>Steer:</b> drag anywhere (WASD or arrows on a keyboard). You never stop moving.</p>
-      <p><b>Eat:</b> run your head into people. Each one joins the mob behind you and gives you a power that stacks.</p>
-      <p><b>Climb:</b> eat enough on a floor and the stairwell opens. Some stairwells are locked: eat the <span data-h-icon="key"></span> keycard holder, or hold both pressure plates with your mob.</p>
-      <p><b>They fight back:</b> people warn each other, run for the exits, throw things, and shove furniture at you. Corner a gym bro and he'll swing. Security shoots straight. Hunters lay bear traps and fire piercing bolts after a laser sight. Flame troopers torch the mob. Grenadiers lob grenades: watch the landing marker.</p>
-      <p><b>The mob:</b> anyone who touches it gets eaten, and zombies lunge out to grab people nearby. But kill a zombie mid-line and everything behind it breaks off as strays — they wander, get hunted down by people with whatever's to hand, and you have to walk back to collect them. Shooters go for strays and the tail first.</p>
-      <p><b>Surge:</b> every 12 people you eat, the mob goes into a frenzy for three seconds: longer lunges, faster feet. Aim it at a crowd, not at a gun.</p>
-      <p><b>Survive:</b> no healing: eating barely heals, so HP comes from Beefy and Vitality. Traps pin you and the back of the mob gets picked off. Lab laser fences cycle on and off: time it. Stay off fire and acid.</p>
+    <div class="howto hcards">
+      <button class="hcard" aria-expanded="false"><span class="hci" data-h-icon="zombie"></span><span class="hct"><b>Steer</b><span>Drag anywhere to steer.</span><span class="hcm">Drag anywhere, or WASD and the arrows on a keyboard. Let go and you ease to a halt.</span></span></button>
+      <button class="hcard" aria-expanded="false"><span class="hci" data-h-icon="bite"></span><span class="hct"><b>Eat</b><span>Bite people. They join you.</span><span class="hcm">Run your head into people. Each one joins the mob behind you and gives you a power that stacks.</span></span></button>
+      <button class="hcard" aria-expanded="false"><span class="hci" data-h-icon="stairs"></span><span class="hct"><b>Climb</b><span>Eat enough. The stairs open.</span><span class="hcm">Eat enough on a floor and the stairwell opens. Some are locked: eat the <span data-h-icon="key"></span> keycard holder, or hold both pressure plates with your mob.</span></span></button>
+      <button class="hcard" aria-expanded="false"><span class="hci" data-h-icon="gunner"></span><span class="hct"><b>They fight back</b><span>They run, shoot and shove.</span><span class="hcm">People warn each other, run for the exits, throw things and shove furniture at you. Gym bros swing, security shoots straight, hunters lay traps, flame troopers torch the mob and grenadiers lob grenades: watch the landing marker.</span></span></button>
+      <button class="hcard" aria-expanded="false"><span class="hci" data-h-icon="broken"></span><span class="hct"><b>Mind the line</b><span>Cut the line, lose the tail.</span><span class="hcm">Anyone who touches the mob gets eaten. Kill a zombie mid-line and everything behind it breaks off as strays: people hunt them and you walk back to collect them. Shooters go for strays and the tail first.</span></span></button>
+      <button class="hcard" aria-expanded="false"><span class="hci" data-h-icon="contagion"></span><span class="hct"><b>Surge</b><span>Every 12 eaten: a frenzy.</span><span class="hcm">Every 12 people you eat, the mob goes into a frenzy for three seconds: longer lunges, faster feet. Aim it at a crowd, not at a gun.</span></span></button>
+      <button class="hcard" aria-expanded="false"><span class="hci" data-h-icon="heart"></span><span class="hct"><b>No healing</b><span>Life is a budget.</span><span class="hcm">Eating barely heals, so life comes from Beefy and Vitality. Traps pin you. Lab laser fences cycle on and off: time them. Stay off fire and acid.</span></span></button>
     </div>
     <div class="codex-title">WHO'S ON THE MENU</div>
     <div id="codex"></div>
@@ -865,6 +885,7 @@ function tc(c){ var m=TC&&TC[c]; return m||c; }
 function toneDef(mon,id){ var L=TONES[mon]; if(!L) return null; for(var i=0;i<L.length;i++) if(L[i].id===id) return L[i]; return null; }
 function toneOwned(mon,id){ var t=toneDef(mon,id); return !!t&&(!t.how||!!(META.toneOwn||{})[mon+':'+id]); }
 function toneId(mon){ var L=TONES[mon]; if(!L) return null;
+  if(G&&G.match) return mon===skinId()&&G.toneOverride&&toneDef(mon,G.toneOverride)?G.toneOverride:L[0].id; // a match: the bound player's colour, never this device's save
   if(G&&G.toneOverride&&mon===skinId()&&toneDef(mon,G.toneOverride)) return G.toneOverride; // the share card draws the run's colour
   var p=(META.tone||{})[mon]; return p&&toneOwned(mon,p)?p:L[0].id; }
 function curTone(){ var mon=skinId(); return toneDef(mon,toneId(mon)); }
@@ -1601,6 +1622,16 @@ var Snd=(function(){
     shimmer(hit+0.1,1.0,1.2);
     if(tier>=5){ hero(1.3); noise(hit,0.5,0.3,'highpass',5000,0.5,null,1500); thump(hit+0.02,1.3); for(i=0;i<6;i++) osc('triangle',chordNote(i,4),chordNote(i,4),hit+0.5+i*0.05,0.3,0.06); } // the ladder past 30: a crash and a sweep on top
   }
+  /* A takedown (owner, 21 Oct): a whole horde goes in one bite. Everyone hears the crunch, the low roar and the gong, by
+     distance; the killer (tier 1-5) gets the full hit under the stamp's sting and a climbing fanfare in the key. */
+  function takedown(tier,v,dest){
+    var t=AC.currentTime, i, k=tier>0?1:0.55*v;
+    if(tier>0) hero(1.2);
+    thump(t,1.3*k,dest); noise(t,0.26,0.32*k,'lowpass',900,1,dest,160); noise(t+0.02,0.06,0.22*k,'highpass',3500,0.7,dest);
+    osc('sawtooth',chordNote(0,1),chordNote(0,1)*0.75,t+0.03,0.75,0.11*k,dest); osc('sawtooth',chordNote(1,1),chordNote(1,1)*0.75,t+0.03,0.7,0.07*k,dest);
+    fm(chordNote(0,2),1.41,4,t+0.06,1.5,0.11*k,dest);
+    for(i=0;i<Math.min(5,tier);i++) osc('triangle',chordNote(i+2,3),chordNote(i+2,3),t+0.3+i*0.07,i===tier-1?0.55:0.12,0.12);
+  }
   /* Every power family has its own timbre (Hades boons, Riot's sonic signatures). Pickups, draft picks and ranks play it,
      so 'power' is no longer one blip for five moments. */
   var MOTIF={sprint:'speed',momentum:'speed',adrenaline:'speed',flex:'speed',contagion:'speed',regen:'body',beefy:'body',bite:'body',thick:'body',huge:'body',tiny:'body',
@@ -1701,6 +1732,7 @@ var Snd=(function(){
       case 'badge': osc('sine',note(2,3),note(4,3),t,0.12,0.16); osc('triangle',note(4,3),note(7,3),t+0.08,0.16,0.12); break;
       /* reward feel (owner, 16 Oct) */
       case 'sting': if(!throttle('sting'+(arg||1),350)) return; sting(arg||1); break;
+      case 'takedown': if(!throttle('takedown'+(arg?1:0),250)) return; takedown(arg|0,v,arg?null:pan(x)); break; // Parade Royale: a horde destroyed (arg: the killer's tier, 0 for everyone else)
       case 'brain': if(!throttle('brain',120)) return; for(var bi=0;bi<3;bi++) osc('triangle',chordNote(bi,3),chordNote(bi,3),t+bi*0.045,bi===2?0.22:0.06,0.09); fm(chordNote(2,4),1.41,1.5,t+0.09,0.2,0.03); break;
       case 'tick': if(!throttle('tick',40)) return; osc('square',note((arg||0)%(COIN_CAP+1),3),note((arg||0)%(COIN_CAP+1),3),t,0.035,0.045); break;
       case 'braaam': hero(1.3); brass(curKey.root*0.5,t,1.2,0.22); brass(curKey.root,t,1.2,0.14); brass(curKey.root*1.5,t,1.2,0.08); thump(t,1); break;
@@ -2002,7 +2034,7 @@ function stats(){
     maxHp:100+15*s.beefy+10*s.regen+10*sk('thick')+(stn==='huge'?30:(stn==='tiny'?-15:0)),
     sickR:s.clout?Math.min(300,110+15*s.clout):0,
     sickMult:Math.max(0.5,1-0.08*s.clout),
-    reach:Math.min(140,45+20*s.contagion)+(skinId()==='werewolf'?15:0),
+    reach:Math.min(140,45+20*s.contagion)+(skinId()==='werewolf'&&!G.match?15:0), // Parade Royale: skins are cosmetic only (everyone equal)
     bite:Math.min(20,2+1.5*s.bite)+(stn==='huge'?4:(stn==='tiny'?-2:0)),
     scoreMult:1+0.25*s.profit,
     segHp:1+s.veteran,
@@ -2641,13 +2673,18 @@ function drawSerum(){
    unlocked, with one redraw. They turn up on validated ground 220-600px off, bob, and go after ITEM_LIFE active seconds.
    Story floors: one heart a floor (25-60s in) and a golden brain on about half of them; the city and Rampage drop them
    on a timer. Powers live in G.fx (seconds left) and hook into the human AI, targeting, hurt() and drawing. */
+/* t is Rampage and free roam; story is the campaign floors and the 25:00 city (owner, 19 Oct: "they all last too long").
+   A story floor is short and has one heart, so a power is a burst, not a stretch of the floor; c is the timer chip's colour. */
 var ITEM_LIFE=45, ITEM_R=16, POWERS=[
-  {id:'meat',name:'ZOMBIE VISION',line:'Everyone is meat. Nobody is armed.',t:10},
-  {id:'giant',name:'GOLIATH',line:'Goliath is up. Everyone is looking at him.',t:15},
-  {id:'god',name:'UNTOUCHABLE',line:'Full health. Nothing gets through for 30s.',t:30},
-  {id:'invis',name:'INVISIBLE',line:'They can\'t see you. For 30s.',t:30},
-  {id:'lunch',name:'LUNCH BELL',line:'Dinner\'s served. They come to you.',t:12}];
+  {id:'meat',name:'ZOMBIE VISION',line:'Everyone is meat. Nobody is armed.',t:10,story:6,c:'#e08a5e'},
+  {id:'giant',name:'GOLIATH',line:'Goliath is up. Everyone is looking at him.',t:15,story:10,c:'#a9df57'},
+  {id:'god',name:'UNTOUCHABLE',line:'Full health. Nothing gets through.',t:30,story:10,c:'#ffd65a'},
+  {id:'invis',name:'INVISIBLE',line:'They can\'t see you.',t:30,story:10,c:'#78c7e8'},
+  {id:'lunch',name:'LUNCH BELL',line:'Dinner\'s served. They come to you.',t:12,story:8,c:'#f2b134'}];
 function fxOn(id){ return !!(G&&G.fx&&G.fx[id]>0); }
+function powerT(p){ return G.mode!=='rampage'&&G.phase!=='free'?p.story:p.t; }
+/* The power running now (the most time left), for the timer chip: {p, left, f} or null. */
+function activePower(){ var best=null; if(!G||!G.fx) return null; for(var i=0;i<POWERS.length;i++){ var p=POWERS[i], left=G.fx[p.id]; if(left>0&&(!best||left>best.left)) best={p:p,left:left,f:Math.min(1,left/((G.fxMax&&G.fxMax[p.id])||powerT(p)))}; } return best; }
 /* Pickups roll their own dice (seeded from the floor), so they never shift the gameplay random sequence. */
 var itemSeed=1;
 function irand(){ itemSeed=(itemSeed*1664525+1013904223)>>>0; return itemSeed/4294967296; }
@@ -2664,7 +2701,7 @@ function updateItems(dt){
     G.itemT[k]=clock+itemGap(k)+(sp?0:5); } });
   for(i=G.items.length-1;i>=0;i--){ var it=G.items[i]; it.t+=dt; if(it.t>=ITEM_LIFE){ G.items.splice(i,1); continue; }
     if(G.hp>0&&Math.hypot(it.x-hd.x,it.y-hd.y)<hd.r+ITEM_R){ G.items.splice(i,1); collectItem(it); } }
-  if(G.fx) for(var k in G.fx) if(G.fx[k]>0){ G.fx[k]-=dt; if(G.fx[k]<=0){ G.fx[k]=0; if(k==='giant'&&G.giant){ spawnParts(G.giant.x,G.giant.y,24,['#8fd14f','#2f5a1a']); G.giant=null; } } }
+  if(G.fx) for(var k in G.fx) if(G.fx[k]>0){ G.fx[k]-=dt; if(G.fx[k]<=0){ G.fx[k]=0; chipsDirty=true; if(k==='giant'&&G.giant){ spawnParts(G.giant.x,G.giant.y,24,['#8fd14f','#2f5a1a']); G.giant=null; } } }
   if(G.roulette){ var R=G.roulette; R.t+=dt; if(R.t>=R.dur&&!R.done){ R.done=true; applyPower(R.pick); } if(R.t>=R.dur+1.2) G.roulette=null; }
   updateGiant(dt);
 }
@@ -2674,7 +2711,7 @@ function collectItem(it){
   else { queueChoice('gold',1); addFloat(it.x,it.y-30,'GOLDEN BRAIN','#ffd65a',18); }
 }
 function applyPower(p){
-  var hd=G.head; G.fx=G.fx||{}; G.fx[p.id]=p.t; banner(':heart: '+p.name+'!'); G.flash=Math.max(G.flash,0.15);
+  var hd=G.head; G.fx=G.fx||{}; G.fxMax=G.fxMax||{}; G.fx[p.id]=G.fxMax[p.id]=powerT(p); chipsDirty=true; banner(':heart: '+p.name+'!'); G.flash=Math.max(G.flash,0.15);
   if(p.id==='god'){ G.hp=G.st.maxHp; addFloat(hd.x,hd.y-40,'FULL HEALTH','#a9df57',16); }
   if(p.id==='giant'){ var sp=serumSpot(90,160,irand)||{x:hd.x+90,y:hd.y}; G.giant={x:sp.x,y:sp.y,r:30,h:0,walk:0,bite:0}; spawnParts(sp.x,sp.y,30,['#8fd14f','#2f5a1a','#efe7d2']); G.shake=Math.max(G.shake,0.4); }
   if(p.id==='meat') for(var i=0;i<G.humans.length;i++){ var h=G.humans[i]; h.task=null; h.job=null; h.btnT=0; }
@@ -2856,7 +2893,7 @@ function defeatMini(m){
   var bonus=MINI_SCORE*(G.stage+1); G.score+=bonus;
   // the champion kill (owner, 16 Oct): the bounty sting, a beat of hit-stop and a brain bounty you watch fly in
   Snd.play('sting',m.x,m.y,4); holdFor(FEEL.hold.mini); if(!G.match||G.cur===G.me) Haptic.tap(25); fxParts(m.x,m.y,26,['#ffffff','#ff9ec4','#ffe066'],1.3); bounty('mini',m.x,m.y,miniBounty(G.stage));
-  if(G.match) return; // Parade Royale: no heal, no drafts; a ghost's defeat is lane E's to reward
+  if(G.match){ if(Royale.tricks&&Royale.tricks.earn) Royale.tricks.earn(G.cur,m.x,m.y); return; } // Parade Royale: no heal, no drafts; the killer earns a trick (owner, 22 Oct); a ghost's other reward is lane E's
   /* A city boss is one draft; a campaign boss keeps the entitlement fixed when its group arrived (two alone, one each in a
      group). A lone boss's two drafts are one pack: the second never offers the family picked from the first. */
   var n=m.city?1:(m.choices||((G.minis||[]).length>1?1:2));
@@ -4769,7 +4806,7 @@ function loadStage(idx,head){
   G.floorEaten=0; G.exitOpen=false; G.stageT=0; G.comp=1;
   G.humans=[]; G.strays=[]; G.proj=[]; G.parts=[]; G.decals=[]; G.floats=[]; G.booms=[]; G.beams=[]; G.tracers=[]; G.boss=null; G.bosses=[]; Snd.stopCrowd(); Snd.rotor(null); Snd.tempo(1);
   G.heave=null; G.shieldHits=[]; G.reveal=null; G.revealNext=null; // all hold pieces of the floor we are leaving
-  G.heat=0; G.heatStep=0; G.alarm=false; G.bonusLost=false; G.hunter=null; G.squadN=0; G.doorFlash=0; G.aiNoted=sd.ai; G.lockT=-1; G.huddleT=0; G.surgeTell=0; G.surgeT=0; G.ranksT=0; G.ranksCd=0; G.mini=null; G.minis=[]; G.miniArrived=false; G.miniQueue=[]; G.items=null; G.giant=null; G.roulette=null; G.foamSlow=1; G.recallDone=false; hideRecall();
+  G.heat=0; G.heatStep=0; G.alarm=false; G.bonusLost=false; G.hunter=null; G.squadN=0; G.doorFlash=0; G.aiNoted=sd.ai; G.lockT=-1; G.huddleT=0; G.surgeTell=0; G.surgeT=0; G.ranksT=0; G.ranksCd=0; G.mini=null; G.minis=[]; G.miniArrived=false; G.miniQueue=[]; G.items=null; G.giant=null; if(G.fx) G.fx.giant=0; G.roulette=null; G.foamSlow=1; G.recallDone=false; hideRecall();
   var nxs=STAGES[Math.min(idx+1,STAGES.length-1)]; G.castIds=Object.keys(sd.cast); for(var ci in nxs.cast){ if(PROF[ci].hostile&&G.castIds.indexOf(ci)<0) G.castIds.push(ci); }
   G.floorPeak=0; G.heatHead=(head&&!sd.endless&&sd.heatT)?head:0; G.heat=G.heatHead; // the head start is live before the first people spawn, so the cast already carries the next floor's hostiles
   computeEff();
@@ -6443,7 +6480,7 @@ function updateHead(dt){
   /* A finger on the screen means go, even before it has dragged past the dead zone (owner, 10 Oct: the zombie was
      stopping when a thumb was held still, re-touched without dragging, or still down after a draft closed). */
   var dir=Royale.inputFor(G.cur);
-  if(dir){ var target=Math.atan2(dir.y,dir.x), diff=angNorm(target-hd.h), mt=steerRate(st,diff,st.speed*(G.adr>0?1.4:1))*dt; hd.h+=Math.max(-mt,Math.min(mt,diff)); }
+  if(dir){ var target=Math.atan2(dir.y,dir.x), diff=angNorm(target-hd.h), mt=steerRate(st,diff,st.speed*(G.adr>0?1.4:1)*(G.match?1+(G.eatKickV||0):1))*dt; /* the eat kick turns as tight as it runs */ hd.h+=Math.max(-mt,Math.min(mt,diff)); }
   hd.r=(HEAD_R+Math.min(HEAD_BITE_MAX,0.5*G.stacks.bite)+Math.min(HEAD_EAT_MAX,G.eaten*0.02))*stanceScale();
 
   var hz=hazardAt(F,hd.x,hd.y,hd.r,true), spm=1;
@@ -6456,7 +6493,7 @@ function updateHead(dt){
   G.adr=Math.max(0,G.adr-dt);
   /* Let go and you stop (owner, 9 Oct: players wanted to hold still); the head eases to a halt and back up to speed. */
   G.go=G.go===undefined?1:G.go; G.go+=((dir?1:0)-G.go)*Math.min(1,dt*(dir?GO_EASE:STOP_EASE)); G.idleT=dir?0:(G.idleT||0)+dt;
-  var sp=st.speed*spm*(G.adr>0?1.4:1)*(G.foamSlow||1)*G.go, ox=hd.x, oy=hd.y;
+  var sp=st.speed*spm*(G.adr>0?1.4:1)*(G.foamSlow||1)*G.go*(G.match?kickMul(dt):1), ox=hd.x, oy=hd.y; // a match: the eat kick
   stepHead(hd,F,Math.cos(hd.h)*sp*dt,Math.sin(hd.h)*sp*dt,dt);
   /* Cling: pressing on something heavy, joystick wobble no longer slides you along its face; the push itself is untouched and a turn past CLING.ang still peels you off. */
   if(G.heave&&G.heave.fresh){ G.heave.fresh=false; var HV=G.heave, pushA=Math.atan2(-HV.ny,-HV.nx);
@@ -6564,6 +6601,8 @@ function update(dt){
     if(pr.life<=0||pr.x<0||pr.y<0||pr.x>F.w||pr.y>F.h){ pr.dead=true; continue; }
     var blk=bulletBlockedBy(F,pr.x,pr.y);
     if(blk&&!(pr.nest&&Math.hypot(pr.x-pr.nest.x,pr.y-pr.nest.y)<NEST_CLEAR)){ pr.dead=true; if(blk.mass>0) shieldHit(blk,pr); else spawnParts(pr.x,pr.y,2,['#f2b134']); continue; }
+    if(pr.streak) continue; // a bullet a streak aura bounced is spent: it flies off and hurts nobody
+    if(G.match&&pr.kind==='bullet'&&streakOn()){ var sar=streakAuraR(); if(Math.hypot(pr.x-hd.x,pr.y-hd.y)<sar&&streakBounce(pr,hd.x,hd.y,sar)) continue; }
     if(Math.hypot(pr.x-hd.x,pr.y-hd.y)<hd.r+3){
       if(pr.kind==='bullet'&&Math.random()<st.deflect){ pr.vx*=-1; pr.vy*=-1; pr.life=0.5; pr.x+=pr.vx*0.04; pr.y+=pr.vy*0.04; addFloat(hd.x,hd.y-30,'deflect!','#74b9ff',11); Snd.play('ricochet',hd.x,hd.y); continue; }
       hurt(pr.dmg); pr.dead=true; continue;
@@ -6582,6 +6621,7 @@ function update(dt){
           if(pr.hits>=pr.pierce) pr.dead=true;
           break;
         }
+        if(m<STREAK_FRONT&&G.match&&streakBounce(pr,s.x,s.y,mr)) break; // the front of a streaking line: the aura takes it
         pr.dead=true; s.hp--;
         spawnParts(s.x,s.y,4,[s.ty.color,ZSKIN]); hitFx(s,s.x,s.y,Math.atan2(pr.vy,pr.vx),[ZSKIN,'#5e8a2e','#efe7d2'],'thwack');
         if(s.hp<=0) removeSeg(m); else Snd.play('absorb',s.x,s.y); // Veteran: the zombie takes it
@@ -6867,7 +6907,7 @@ function updateSkinFx(dt){
   if(G.bats){ for(i=G.bats.length-1;i>=0;i--){ var b=G.bats[i]; b.t+=dt; b.x+=b.vx*dt; b.y+=b.vy*dt-20*dt; b.vx*=0.97; b.vy*=0.97; if(b.t>b.life) G.bats.splice(i,1); } }
   if(id==='vampire'&&G.headMoved/Math.max(dt,1e-3)>G.st.speed*0.95&&G.st.speed>200){ G.batT=(G.batT||0)-dt; if(G.batT<=0){ G.batT=0.12; batBurst(hd.x-Math.cos(hd.h)*hd.r,hd.y-Math.sin(hd.h)*hd.r,1); } }
   if(G.wraps){ for(i=G.wraps.length-1;i>=0;i--){ var w=G.wraps[i]; w.t-=dt; if(w.t<=0){ G.wraps.splice(i,1); continue; }
-    for(var j=0;j<G.humans.length;j++){ var h=G.humans[j]; if(!h.dead&&Math.abs(h.x-w.x)<16&&Math.abs(h.y-w.y)<16) h.wrapT=1; } } }
+    if(!G.match) for(var j=0;j<G.humans.length;j++){ var h=G.humans[j]; if(!h.dead&&Math.abs(h.x-w.x)<16&&Math.abs(h.y-w.y)<16) h.wrapT=1; } } } // a match keeps the trail and drops the tangle: skins are cosmetic there
   if(id==='mummy'&&G.headMoved>0.5){ G.wrapDrop=(G.wrapDrop||0)-dt; if(G.wrapDrop<=0){ G.wrapDrop=0.2; (G.wraps=G.wraps||[]).push({x:hd.x-Math.cos(hd.h)*hd.r,y:hd.y-Math.sin(hd.h)*hd.r,a:hd.h,t:3}); } }
 }
 function drawBats(){ var bs=G.bats; if(!bs) return; ctx.fillStyle='#14121a';
@@ -7547,10 +7587,18 @@ function renderChips(){
   var sr=$('slotRow'); if(sr) sr.innerHTML=Art.rich(slotsHtml()); var html='', list=[], prev=G.chipPrev||(G.chipPrev={}), k;
   for(k in ABIL){ var n=G.stacks[k]; if(n>0) list.push({k:k,n:n,pop:n!==(prev[k]||0)}); prev[k]=n; }
   /* one quiet row (owner, 16 Oct): the five biggest stacks in ABIL order, then +N; the full list is on pause */
-  var keep=list.slice().sort(function(a,b){ return b.n-a.n; }).slice(0,CHIP_ROW).map(function(c){ return c.k; });
+  var row=CHIP_ROW-(activePower()?1:0); // a running heart power takes one place at the front of the row
+  var keep=list.slice().sort(function(a,b){ return b.n-a.n; }).slice(0,row).map(function(c){ return c.k; });
   list.forEach(function(c){ if(keep.indexOf(c.k)>=0) html+='<span class="chip'+(c.pop?' pop':'')+'" style="--c:'+ABIL[c.k].color+'" title="'+ABIL[c.k].name+'">'+ABIL[c.k].icon+'<b>'+c.n+'</b></span>'; });
-  if(list.length>CHIP_ROW) html+='<span class="chip more">+'+(list.length-CHIP_ROW)+'</span>';
+  if(list.length>row) html+='<span class="chip more">+'+(list.length-row)+'</span>';
   $('chips').innerHTML=Art.rich(html);
+}
+/* The heart power's timer chip, every frame: hidden with no power; the ring drains, the number is whole seconds left. */
+function updatePowerChip(){
+  var el=$('powerChip'); if(!el) return; var a=activePower(), css=el.style&&el.style.setProperty?el.style:null; setCls(el,'hidden',!a); if(!a) return;
+  if(el._id!==a.p.id){ el._id=a.p.id; if(css) css.setProperty('--c',a.p.c); el.title=a.p.name+': seconds left'; }
+  var n=Math.ceil(a.left); if(el._n!==n){ el._n=n; $('powerN').textContent=n+'s'; }
+  if(css) css.setProperty('--f',a.f.toFixed(3)); setCls(el,'ending',a.left<=3&&!calm());
 }
 /* What the life bar and the ring at the head show, from G.hp alone (no hurt or heal site needs to know): after a drop the
    white 'just lost' strip holds 0.35s, then drains to the bar over 0.4s; a heal snaps it. Times are on the game clock. */
@@ -7593,6 +7641,7 @@ function updateHud(){
   var lostN=0; for(var li=0;li<G.strays.length;li++) if(!G.strays[li].dead) lostN++; var mobVal=G.segs.length+':'+lostN, mobEl=$('horde'); if(mobEl._mobVal!==mobVal){ mobEl._mobVal=mobVal; mobEl.textContent=G.segs.length+(lostN?' (+'+lostN+' lost)':''); mobEl.innerHTML=G.segs.length+(lostN?'<small class="lost">+'+lostN+' lost</small>':''); }
   $('score').textContent=Math.floor(G.score); $('score').style.display=G.match?'none':''; // a match keeps no score: lane F's strip and the end screen say what matters
   var bh=$('brainHud'); if(bh){ setCls(bh,'hidden',noBrains()); var bv=Math.max(0,brainsEarned()-brainsInFlight()); if(bh._v!==bv){ bh._v=bv; $('brainN').textContent=bv; } var rg=$('brainRing'); if(rg&&rg.style&&rg.style.setProperty) rg.style.setProperty('--f',brainBits().toFixed(2)); setCls(bh,'pulse',(G.brainPulse||0)>0.15); setCls(bh,'rest',!(G.brainShowT>0)&&!(G.flyers&&G.flyers.length)); } // shown while brains fly in and 2s after; the total is in the pause
+  updatePowerChip();
   var sw=$('surgeWrap'), sf=$('surgeFill'); if(sf) sf.style.width=Math.round(100*(G.surgeT>0?G.surgeT/3:G.surge))+'%'; if(sw){ if(G.surgeTell>0||G.surgeT>0) sw.classList.add('full'); else sw.classList.remove('full'); }
   /* One short line (owner, 10 Oct: too much text): progress and icons; the puzzle hint only once the stairs are open. */
   var flText='', fl=$('floorline'), sd=G.sd, lv=G.lv, F=G.F, locked=F.pdoor&&!F.pdoor.open, R0=G.ramp;
@@ -7913,7 +7962,12 @@ function gameOver(){
    In single-player G.players=[P0] is bound once at newGame and nothing here runs. */
 var Royale={};
 var ROYALE_VER=1, ROYALE_LEN=360, ROYALE_CAP=300, /* 500 in the design; 300 for the four-phone test after docs/royale/PERF-ROYALE.md (lane G, 18 Oct): the cheap-phone stand-in holds 30 fps at 300 and not at 500 */ ROYALE_START_MOB=8, ROYALE_MAX=12;
-var ROYALE_COLOURS=['#ff5a66','#4fc3f7','#ffd54f','#a5d66f','#ce93d8','#ff9f43','#4dd0c4','#f48fb1','#90a4ae','#dce775','#7986cb','#ffab91'];
+/* The grand opening (owner, 21 Oct): every monster and every colour can be worn in a match, whatever the campaign has
+   unlocked. Off, the lobby offers only what this device owns. Single-player unlocks never change. */
+var ROYALE_OPEN_LOOKS=true;
+/* Each player's colour: the name tag, the arrow and the aura. Never the armed-people red or the strays' green (owner,
+   21 Oct: the aura must not read as either), so the first is bone and the fourth magenta. */
+var ROYALE_COLOURS=['#efe7d2','#4fc3f7','#ffd54f','#ff4fd8','#ce93d8','#ff9f43','#4dd0c4','#f48fb1','#90a4ae','#dce775','#7986cb','#ffab91'];
 /* The per-player part of G. Objects and arrays are shared by reference while bound; scalars are copied in and out. */
 var PLAYER_FIELDS=['head','deathCause','deathBy','walk','go','idleT','headMoved','adr','stun','foamSlow','heave','burnT','chomp','path','pathCut','comp','mobBox',
   'hp','hurt','inv','reviveT','hpLast','hpGhostFrom','hpDropAt','lifeShowAt','hpHealAt',
@@ -7923,7 +7977,32 @@ var PLAYER_FIELDS=['head','deathCause','deathBy','walk','go','idleT','headMoved'
   'combo','comboT','comboMax','chainPop','chainHot','chainColT','chainHeld','chainHeat','chainHeatCol','multi','buffetPaid','squadsEaten','stamp','stampNext',
   'score','eaten','eatenPaid','runBrains',
   'fireT','lastFire','crackleT','vomT','roarT','zapT','fenceT','groundT',
-  'batT','wrapDrop','skinOverride'];
+  'batT','wrapDrop','skinOverride','toneOverride','eatKick','eatKickV','streakT'];
+/* The eat kick (owner, 21 Oct: "a small speed bump every time they eat a human"): every person eaten in a match adds
+   ROYALE_KICK to the head's speed, stacking to ROYALE_KICK_MAX and fading with a ROYALE_KICK_T time constant, so a
+   streak of bites keeps you quick and one bite is a short lunge. Momentum is still where lasting speed comes from.
+   The speed itself (eatKickV) eases onto the kick over ROYALE_KICK_RISE, so no head jolts on a guest's screen. */
+var ROYALE_KICK=0.12, ROYALE_KICK_MAX=0.4, ROYALE_KICK_T=0.5, ROYALE_KICK_RISE=0.15;
+function kickEat(){ G.eatKick=Math.min(ROYALE_KICK_MAX,(G.eatKick||0)+ROYALE_KICK); if(G.eatKick>=STREAK_ON) G.streakT=STREAK_HOLD; }
+/* The streak aura (owner, 22 Oct: "if someone is on the streak make bullets from little people bounce from the radiating
+   speed aura"): two quick bites (a kick of STREAK_ON) light it for STREAK_HOLD, renewed by every bite while the kick is
+   that high. While it is lit, human bullets (shoot(): never bosses or gunships) that reach the head's aura or the first
+   STREAK_FRONT zombies bounce off: half of them at first, all of them at the speed cap. The tail can still be shot off. */
+var STREAK_ON=0.2, STREAK_HOLD=0.8, STREAK_FRONT=6;
+function streakOn(){ return !!G.match&&G.streakT>0; }
+function streakLevel(){ return streakOn()?Math.max(0,Math.min(1,((G.eatKick||0)-STREAK_ON)/(ROYALE_KICK_MAX-STREAK_ON))):0; } // 0 just lit .. 1 at the cap
+function streakAuraR(){ return G.head.r+10+8*streakLevel(); }
+/* A human bullet at the bound player's aura round (ox,oy) with radius r: bounce it (true) or let it hit (false). Host only. */
+function streakBounce(pr,ox,oy,r){
+  if(!streakOn()||pr.kind!=='bullet'||pr.streak||!G.match.host||pr.through===G.cur.id) return false;
+  if(mrand()>=0.5+0.5*streakLevel()){ pr.through=G.cur.id; return false; } // one roll a bullet per aura: one that got through stays through
+  var nx=pr.x-ox, ny=pr.y-oy, l=Math.hypot(nx,ny)||1; nx/=l; ny/=l; var dot=pr.vx*nx+pr.vy*ny; if(dot<0){ pr.vx-=2*dot*nx; pr.vy-=2*dot*ny; }
+  pr.x=ox+nx*(r+2); pr.y=oy+ny*(r+2); pr.life=Math.min(pr.life,0.6); pr.streak=G.cur.id; // spent: it cannot bounce again or hurt anyone
+  if(Royale.ui&&Royale.ui.bounce) Royale.ui.bounce(G.cur,pr.x,pr.y,Math.atan2(pr.vy,pr.vx));
+  return true;
+}
+function kickMul(dt){ var k=G.eatKick||0, v=G.eatKickV||0; if(G.streakT>0) G.streakT=Math.max(0,G.streakT-dt); if(!(k>0)&&!(v>0)) return 1;
+  v+=(k-v)*Math.min(1,dt/ROYALE_KICK_RISE); k*=Math.exp(-dt/ROYALE_KICK_T); if(k<0.004) k=0; if(v<0.004&&!k) v=0; G.eatKick=k; G.eatKickV=v; return 1+v; } // the bound player's; 1 outside a match
 function isRoyale(){ return !!(G&&G.match); }
 function matchLive(){ return !G.match||G.match.phase==='play'; } // outside 'play' heads stand still, cannot be hurt and do not eat
 function mrand(){ return G.match.rng(); }
@@ -7934,7 +8013,7 @@ function seededBuild(seed,fn){ var mr=Math.random; Math.random=cityRng(seed); tr
 function playerDefaults(){
   var d={head:{x:0,y:0,h:0,r:HEAD_R,vx:0,vy:0},hp:100,inv:0,stun:0,walk:0,comp:1,headMoved:0,adr:0,runBrains:0,fireT:6,burnT:0,lastFire:{x:0,y:0},vomT:4,roarT:5,zapT:2,
     path:[],segs:[],stacks:{},chomp:0,hurt:0,seen:{},pathCut:0,surge:0,surgeTell:0,surgeT:0,ranksT:0,ranksCd:0,ranksR:0,foamSlow:1,peakMob:0,floorPeak:0,
-    score:0,eaten:0,combo:0,comboT:0,comboMax:0,chainHeat:0,chainColT:0,chainHeatCol:null,heave:null,mobBox:{x0:0,y0:0,x1:0,y1:0},run:null,st:null,deathCause:null,deathBy:0};
+    eatKick:0,eatKickV:0,streakT:0,score:0,eaten:0,combo:0,comboT:0,comboMax:0,chainHeat:0,chainColT:0,chainHeatCol:null,heave:null,mobBox:{x0:0,y0:0,x1:0,y1:0},run:null,st:null,deathCause:null,deathBy:0};
   for(var k in ABIL) d.stacks[k]=0;
   d.run=newRun();
   return d;
@@ -7947,7 +8026,8 @@ function newPlayer(id,opts){
     stats:{eaten:0,bites:0,taken:0,lost:0,ghostTaken:0,killedBy:{},peak:0,dmgTo:{},firstBite:{},bitesOn:{},hordeAtDeath:0}};
   var d=playerDefaults(); for(var f in d) P[f]=d[f];
   for(var i=0;i<PLAYER_FIELDS.length;i++){ var k=PLAYER_FIELDS[i]; if(!(k in P)) P[k]=undefined; }
-  P.skinOverride=opts.skin?P.skin:null; // a match fixes every player's skin; single-player reads the save
+  P.tone=toneDef(P.skin,opts.tone)?opts.tone:TONES[P.skin][0].id; // the colour of that monster (12-skins.js)
+  P.skinOverride=opts.skin?P.skin:null; P.toneOverride=opts.skin?P.tone:null; // a match fixes every player's look; single-player reads the save
   return P;
 }
 /* Make P the player every legacy function sees. Saves the bound player's scalars first. Cheap; call it as often as needed. */
@@ -7988,10 +8068,10 @@ function forPlayers(fn){ var was=G.cur, ps=G.players||[]; for(var i=0;i<ps.lengt
 /* The head's steering and step for one frame (the bound player); the same code a guest predicts its own head with. */
 function moveHead(dt,dir){
   var st=G.st, hd=G.head, F=G.F;
-  if(dir){ var target=Math.atan2(dir.y,dir.x), diff=angNorm(target-hd.h), mt=steerRate(st,diff,st.speed*(G.adr>0?1.4:1))*dt; hd.h+=Math.max(-mt,Math.min(mt,diff)); }
+  if(dir){ var target=Math.atan2(dir.y,dir.x), diff=angNorm(target-hd.h), mt=steerRate(st,diff,st.speed*(G.adr>0?1.4:1)*(1+(G.eatKickV||0)))*dt; hd.h+=Math.max(-mt,Math.min(mt,diff)); }
   var spm=G.stun>0?0:1;
   G.go=G.go===undefined?1:G.go; G.go+=((dir?1:0)-G.go)*Math.min(1,dt*(dir?GO_EASE:STOP_EASE)); G.idleT=dir?0:(G.idleT||0)+dt;
-  var sp=st.speed*spm*(G.adr>0?1.4:1)*(G.foamSlow||1)*G.go, ox=hd.x, oy=hd.y;
+  var sp=st.speed*spm*(G.adr>0?1.4:1)*(G.foamSlow||1)*G.go*kickMul(dt), ox=hd.x, oy=hd.y;
   hd.x+=Math.cos(hd.h)*sp*dt; hd.y+=Math.sin(hd.h)*sp*dt;
   applyBelts(hd,F,dt); resolveHead(hd,F,dt);
   G.headMoved=Math.hypot(hd.x-ox,hd.y-oy);
@@ -8026,7 +8106,7 @@ function startMatch(opts){
   var n=G.players.length, cx=3300, cy=3300;
   for(i=0;i<n;i++){ var Q=G.players[i], a=TAU*i/n, p=freeNear(G.F,cx+Math.cos(a)*600,cy+Math.sin(a)*600,HEAD_R+4)||{x:cx+Math.cos(a)*600,y:cy+Math.sin(a)*600};
     Q.head.x=p.x; Q.head.y=p.y; Q.head.h=a+Math.PI; }
-  forPlayers(function(Q){ Q.skinOverride=Q.skin; G.skinOverride=Q.skin; G.st=stats(); G.hp=G.st.maxHp; for(var k=0;k<ROYALE_START_MOB;k++) addSeg('intern'); G.peakMob=G.segs.length; Q.stats.peak=G.segs.length; });
+  forPlayers(function(Q){ Q.skinOverride=Q.skin; G.skinOverride=Q.skin; Q.toneOverride=Q.tone; G.toneOverride=Q.tone; G.st=stats(); G.hp=G.st.maxHp; for(var k=0;k<ROYALE_START_MOB;k++) addSeg('intern'); G.peakMob=G.segs.length; Q.stats.peak=G.segs.length; });
   bindPlayer(G.me); G.st=stats(); SEG_R=9; chipsDirty=true; renderChips(); Snd.music('streets'); updateHud();
   if(state==='card') resumeCard(); state='play'; $('card').classList.add('hidden'); // no floor card: the lobby was the card
   if(Royale.match&&Royale.match.begin) Royale.match.begin(); else G.match.phase='play';
@@ -8056,7 +8136,7 @@ var ROYALE_LANES=['match','fights','ghosts','bots','cars','tricks','net','ui']; 
 function royaleEach(fn,a,b,c,d){ for(var i=0;i<ROYALE_LANES.length;i++){ var L=Royale[ROYALE_LANES[i]]; if(L&&typeof L[fn]==='function') L[fn](a,b,c,d); } }
 Royale.update=function(dt){ royaleEach('update',dt); };
 Royale.draw=function(layer){ royaleEach('draw',layer); };
-Royale.onEat=function(P,h){ P.stats.eaten++; if(G.segs.length>P.stats.peak) P.stats.peak=G.segs.length; if(G.match.host) G.match.events.push({k:'eat',id:P.id,uid:h.uid||0}); royaleEach('onEat',P,h); };
+Royale.onEat=function(P,h){ kickEat(); P.stats.eaten++; if(G.segs.length>P.stats.peak) P.stats.peak=G.segs.length; if(G.match.host) G.match.events.push({k:'eat',id:P.id,uid:h.uid||0}); royaleEach('onEat',P,h); };
 Royale.onSegLost=function(P,seg,cause,i){ royaleEach('onSegLost',P,seg,cause,i); };
 Royale.onStray=function(s,P){ royaleEach('onStray',s,P); };
 Royale.onDeath=function(P,cause,by){
@@ -8152,13 +8232,14 @@ var NET_F_MOVE=64, NET_F_PANIC=128, NET_F_PUSH=256, NET_F_STUN=512, NET_F_FEAR=1
 
 var netS=netFresh();
 function netFresh(){
-  return {role:null,T:null,code:'',me:0,name:'',skin:'zombie',lobby:[],bots:null,peers:{},clock:0,started:false,screen:'menu',msg:'',lastErr:null,ice:null,relay:null,probing:false,autoT:NET_AUTO,timer:null,lastMs:0,
+  return {role:null,T:null,code:'',me:0,name:'',skin:'zombie',tone:'green',lobby:[],bots:null,peers:{},clock:0,started:false,screen:'menu',msg:'',lastErr:null,ice:null,relay:null,probing:false,autoT:NET_AUTO,timer:null,lastMs:0,
     snapAcc:0,inAcc:0,inN:0,pend:[],tick:null,ended:false,recent:[],recentF:-1,helloAt:-1,rtt:0.3,joinT:0,quietT:0,leaving:false,waiting:false,
     snapT:0,got:false,q:[],hT:-1,hN:0,hClock:0,hPhase:'',tA:0,tB:0,rT:0,vT:0,jit:0,D:1/NET_HZ,rate:1,rA:0,rB:0,arr:{n:0,at:-1,first:0,newest:0,lastT:0,miss:0},gone:{},playAt:-1,wallP:0,wallOn:false,wallSet:false,rSkip:false,awayArr:false,pend:null,eatQ:[],eatPend:{},vanished:[],hmap:{},mmap:{},gmap:{},hist:[],hi:0,lag:0.3,corrX:0,corrY:0,corrH:0,hostX:null,hostY:null,sentN:[],sentI:0,ack:0,
     segPool:[],strayPool:[],projPool:[],foamPool:[],tyCache:{},sizes:{},maxBytes:0,uidSeq:0,midSeq:0,furM:null,furBase:null};
 }
 function netOwn(o,k){ return Object.prototype.hasOwnProperty.call(o,k); }
 function netSkinOk(s){ return typeof s==='string'&&netOwn(SKINS,s)?s:'zombie'; }
+function netToneOk(s,t){ s=netSkinOk(s); return typeof t==='string'&&toneDef(s,t)?t:TONES[s][0].id; } // a colour that monster has, else its first
 /* Peers live under '#'+id: a guest picks its own PeerJS id, so '__proto__' or 'constructor' must never reach a plain key. */
 function netQ(peer){ var k='#'+peer; return netOwn(netS.peers,k)?netS.peers[k]:null; }
 function netQSet(peer,q){ netS.peers['#'+peer]=q; return q; }
@@ -8323,12 +8404,12 @@ function netBind(T){
   T.onJoin(function(peer){ });
   T.onLeave(function(peer){ if(netS.T!==T) return; if(netS.role==='host') netHostLeave(peer,false); else netLost('host'); });
 }
-function netLobbyMsg(id,again){ var ps=[], i, L=netS.lobby; for(i=0;i<L.length;i++) ps.push({id:L[i].id,name:L[i].name,colour:L[i].colour,skin:L[i].skin}); var m={t:'lobby',code:netS.code,me:id,players:ps}; if(again) m.again=true; return m; }
+function netLobbyMsg(id,again){ var ps=[], i, L=netS.lobby; for(i=0;i<L.length;i++) ps.push({id:L[i].id,name:L[i].name,colour:L[i].colour,skin:L[i].skin,tone:L[i].tone}); var m={t:'lobby',code:netS.code,me:id,players:ps}; if(again) m.again=true; return m; }
 function netLobbySend(again){ netEachPeer(function(k,q){ if(q.hello&&q.live) netS.T.send(q.peer,netLobbyMsg(q.id,again)); }); netRender(); }
 function netEachPeer(fn){ var k; for(k in netS.peers) if(netOwn(netS.peers,k)) fn(k,netS.peers[k]); }
 function netFreeColour(){ var used={}, i; for(i=0;i<netS.lobby.length;i++) used[netS.lobby[i].colour]=1; if(G&&G.match&&G.players) for(i=0;i<G.players.length;i++) used[G.players[i].colour]=1; for(i=0;i<ROYALE_COLOURS.length;i++) if(!used[i]) return i; return netS.lobby.length%ROYALE_COLOURS.length; } // a live match's bots hold colours too (they are never in the lobby)
 function netNextId(){ var m=0, i, L=netS.lobby; for(i=0;i<L.length;i++) m=Math.max(m,L[i].id); if(G&&G.match&&G.players) for(i=0;i<G.players.length;i++) m=Math.max(m,G.players[i].id); return m+1; } // a finished match's players do not count: ids stay 1..12 over rematches
-function netSpecs(){ var ps=[], i, L=netS.lobby; for(i=0;i<L.length;i++) ps.push({id:L[i].id,name:L[i].name,colour:L[i].colour,skin:L[i].skin}); return ps; }
+function netSpecs(){ var ps=[], i, L=netS.lobby; for(i=0;i<L.length;i++) ps.push({id:L[i].id,name:L[i].name,colour:L[i].colour,skin:L[i].skin,tone:L[i].tone}); return ps; }
 /* The host's player list at START: the lobby, then the bots lane's plan for it (ROYALE.md §11), fixed for the match so a late joiner gets the same list. */
 function netBotsPlan(){ if(!netS.bots) netS.bots=(Royale.bots&&Royale.bots.plan)?(Royale.bots.plan(netSpecs())||[]):[]; return netS.bots; }
 function netStartMsg(){ return {t:'start',seed:G.match.seed,length:G.match.length,players:netSpecs().concat(netBotsPlan())}; }
@@ -8344,21 +8425,21 @@ function netHostMsg(peer,m){
   q.lastT=netNow();
   if(m.t==='hello'){
     if(q.hello) return;
-    var name=netName(m.name), skin=netSkinOk(m.skin), inMatch=netS.started&&G.match&&G.match.phase!=='ended';
+    var name=netName(m.name), skin=netSkinOk(m.skin), tone=netToneOk(skin,m.tone), inMatch=netS.started&&G.match&&G.match.phase!=='ended';
     if(m.ver!==ROYALE_VER){ netS.msg='Turned away '+name+': a different version.'; netBye(peer,'version'); netRender(); return; }
     if(!inMatch&&netS.lobby.length>=ROYALE_MAX){ netS.msg='Full. Turned away '+name+'.'; netBye(peer,'full'); netRender(); return; }
     q.hello=true;
     if(!inMatch){ // the lobby, or the end screen: they wait in the lobby for the next match
-      q.id=netNextId(); netS.lobby.push({id:q.id,name:name,colour:netFreeColour(),skin:skin,peer:peer});
+      q.id=netNextId(); netS.lobby.push({id:q.id,name:name,colour:netFreeColour(),skin:skin,tone:tone,peer:peer});
       if(netS.started) netS.T.send(peer,netLobbyMsg(q.id)); else netLobbySend(); return; }
     // mid-match: take back your own player (same name, nobody connected to it), else join as the dead (a ghost later, §7)
     var P=null, i, k; for(i=0;i<G.players.length;i++){ var Q=G.players[i]; if(Q!==G.me&&!Q.bot&&Q.name===name&&!netLivePeerOf(Q)){ P=Q; break; } }
     if(P){ netEachPeer(function(k2,o){ if(o!==q&&o.P===P) delete netS.peers[k2]; }); Royale.onRejoin(P); } // the old record goes: only the current one can time out
     else { if(G.players.length>=ROYALE_MAX){ netBye(peer,'full'); return; } // bots count: humans + bots never pass ROYALE_MAX
-      P=netNewPlayer(netNextId(),{name:name,colour:netFreeColour(),skin:skin,remote:true}); P.alive=false; P.diedAt=G.match.clock; P.head.x=3300; P.head.y=3300; G.players.push(P); }
+      P=netNewPlayer(netNextId(),{name:name,colour:netFreeColour(),skin:skin,tone:tone,remote:true}); P.alive=false; P.diedAt=G.match.clock; P.head.x=3300; P.head.y=3300; G.players.push(P); }
     q.P=P; q.id=P.id;
     for(k=0;k<netS.lobby.length;k++) if(netS.lobby[k].id===P.id) break;
-    if(k>=netS.lobby.length) netS.lobby.push({id:P.id,name:P.name,colour:P.colour,skin:P.skin,peer:peer}); else netS.lobby[k].peer=peer;
+    if(k>=netS.lobby.length) netS.lobby.push({id:P.id,name:P.name,colour:P.colour,skin:P.skin,tone:P.tone,peer:peer}); else netS.lobby[k].peer=peer;
     netLobbySend(); netS.T.send(peer,netStartMsg()); return;
   }
   if(!q.hello) return;
@@ -8401,8 +8482,8 @@ function netGuestMsg(m){
 }
 /* Names, colours and skins for players the snapshot knows only by id (someone who joined mid-match). */
 function netAdopt(){ for(var i=0;i<netS.lobby.length;i++){ var L=netS.lobby[i], P=playerById(L.id);
-  if(!P){ P=netNewPlayer(L.id,{name:L.name,colour:L.colour,skin:L.skin,remote:L.id!==netS.me}); P.alive=false; G.players.push(P); }
-  else { P.name=L.name; P.colour=L.colour; P.skin=netSkinOk(L.skin); P.skinOverride=P.skin; } } }
+  if(!P){ P=netNewPlayer(L.id,{name:L.name,colour:L.colour,skin:L.skin,tone:L.tone,remote:L.id!==netS.me}); P.alive=false; G.players.push(P); }
+  else { P.name=L.name; P.colour=L.colour; P.skin=netSkinOk(L.skin); P.skinOverride=P.skin; P.tone=netToneOk(P.skin,L.tone); P.toneOverride=P.tone; } } }
 /* The connection is gone (why: version, full, host, left). After the end a guest keeps its end screen: only the line closes. */
 function netLost(why){
   var text=netOwn(NET_WHY,why)?NET_WHY[why]:NET_WHY.host, ended=!!(G&&G.match&&G.match.phase==='ended'), inMatch=netS.started&&G&&G.match&&!ended;
@@ -8414,7 +8495,7 @@ function netLost(why){
 }
 /* Both sides: build the match from the start message. Every device runs the same city from the seed (core). */
 function netBegin(seed,length,players,host){
-  var ps=[], i; for(i=0;i<players.length;i++) ps.push({id:players[i].id|0,name:netName(players[i].name),colour:players[i].colour|0,skin:netSkinOk(players[i].skin),remote:players[i].id!==netS.me,bot:!!players[i].bot});
+  var ps=[], i; for(i=0;i<players.length;i++) ps.push({id:players[i].id|0,name:netName(players[i].name),colour:players[i].colour|0,skin:netSkinOk(players[i].skin),tone:netToneOk(players[i].skin,players[i].tone),remote:players[i].id!==netS.me,bot:!!players[i].bot});
   netS.started=true; netS.got=false; netS.ended=false; netS.q=[]; netS.hT=-1; netS.tA=netS.tB=netS.rT=netS.vT=0; netS.jit=0; netS.D=1/NET_HZ; netS.rate=1; netS.rA=netS.rB=0; netS.arr={n:0,at:-1,first:0,newest:0,lastT:0,miss:0}; netS.gone={}; netS.playAt=-1; netS.rSkip=false; netS.awayArr=false; netS.pend=null; netS.eatQ=[]; netS.eatPend={}; netS.hmap={}; netS.mmap={}; netS.gmap={}; netS.hist=[]; netS.hi=0; netS.corrX=netS.corrY=netS.corrH=0; netS.hostX=null; netS.ack=0; netS.pend=[];
   netS.ringSeen=false; netS.furM=null; netStopTimer(); netShow(false); netWait(false);
   startMatch({host:host,seed:seed>>>0,length:length||ROYALE_LEN,code:netS.code,players:ps,me:netS.me});
@@ -8867,7 +8948,7 @@ function netEvents(list,must){
       netS.gone[key]=netS.hT; if(h){ h.dead=true; var ix=G.humans.indexOf(h); if(ix>=0) G.humans.splice(ix,1); delete netS.hmap[key]; }
       if(ev.id!==me){ if(P) P.chomp=0.3; continue; }
       var who=h||{x:hd.x,y:hd.y,ty:PROF.intern,skin:HUMAN_SKINS[0],id:'intern',phase:0,dead:true};
-      if(G.comboT>0) G.combo++; else G.combo=1; G.comboT=G.comboMax=chainWindow(); G.eaten++; G.chomp=0.3;
+      if(G.comboT>0) G.combo++; else G.combo=1; G.comboT=G.comboMax=chainWindow(); G.eaten++; G.chomp=0.3; kickEat(); // the predicted head gets the host's eat kick
       Snd.capture(who,'bite',G.combo-1); Haptic.tap(15); feelEat(who); }
     else if(ev.k==='bite'){ if(ev.by===me){ Haptic.tap(25); stamp(ev.n>1?'BITE ×'+ev.n:'BITE',1,hd.x,hd.y); } else if(ev.of===me){ G.hurt=Math.max(G.hurt||0,0.3); Haptic.tap(25); } }
     else if(ev.k==='bounce'){ if(ev.a===me||ev.b===me){ Haptic.tap(25); G.shake=Math.max(G.shake||0,0.15); } }
@@ -8890,14 +8971,19 @@ var NET_CSS='#royaleLobby .overlay{z-index:12}#royaleLobby .poster{position:rela
   '.rlList{list-style:none;margin:12px 0;padding:0;text-align:left;border:3px solid var(--ink);background:var(--bone2)}'+
   '.rlList li{display:flex;align-items:center;gap:8px;padding:6px 10px;font:700 15px var(--font);border-top:2px solid rgba(28,26,36,.15)}.rlList li:first-child{border-top:0}'+
   '.rlDot{width:16px;height:16px;border-radius:50%;border:2px solid var(--ink);flex:none}.rlSkin{width:22px;height:22px;flex:none;display:inline-flex}.rlSkin svg{width:100%;height:100%}'+
+  '.rlHow{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:14px 0 2px;text-align:left}.rlHc{display:flex;align-items:center;gap:7px;padding:6px 8px;border:2px solid var(--ink);border-radius:3px;background:linear-gradient(135deg,#f6edda,#dfd3b4);font:700 13px/1.25 var(--font);color:var(--ink)}.rlHc svg{width:30px;height:30px;flex:none}'+
+  '#rlLook{margin:8px 0 2px}.rlTone{width:12px;height:12px;border-radius:50%;border:2px solid var(--ink);flex:none;margin-left:-4px}'+
   '.rlWho{margin-left:auto;font:600 11px var(--font);color:var(--muted);text-transform:uppercase;letter-spacing:1px}'+
   '.rlMsg{min-height:1.3em;color:var(--blood);font-weight:700}.rlNet{font-size:12px;opacity:.75;min-height:1.2em}.rl .hidden{display:none!important}'+
   '#rlWait{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:13;background:var(--bone);color:var(--ink);border:3px solid var(--ink);box-shadow:4px 4px 0 var(--blood);padding:8px 14px;font:700 14px var(--font);border-radius:4px;max-width:90vw;text-align:center}#rlWait.hidden{display:none}';
+/* How a match works in four pictures (owner, 21 Oct: less to read). The ghost comeback stays a surprise. */
+var NET_HOW=[['zombie','Eat people. Grow.'],['bite','Bite their line. Steal half.'],['fire','Stay inside the ring.'],['trophy','Last horde wins.']];
+function netHowHtml(){ var h='<div class="rlHow">'; for(var i=0;i<NET_HOW.length;i++) h+='<div class="rlHc">'+Art.svg(NET_HOW[i][0])+'<span>'+NET_HOW[i][1]+'</span></div>'; return h+'</div>'; }
 function netHtml(){
   return '<div class="overlay" id="rlOv"><div class="poster small rl"><h2>PARADE ROYALE</h2>'+
     '<div id="rlMenu"><div class="tag">Twelve hordes. One city. One left standing.</div></div>'+
-    '<div class="rlRow" id="rlNameRow"><label for="rlName">Name</label><input id="rlName" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false"></div>'+
-    '<div id="rlMenuB"><button class="big" id="rlHost">HOST A MATCH</button><br><button class="mid" id="rlToJoin">JOIN WITH A CODE</button></div>'+
+    '<div class="rlRow" id="rlNameRow"><label for="rlName">Name</label><input id="rlName" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false"></div><div id="rlLook"></div>'+
+    '<div id="rlMenuB"><button class="big" id="rlHost">HOST A MATCH</button><br><button class="mid" id="rlToJoin">JOIN WITH A CODE</button>'+netHowHtml()+'</div>'+
     '<div id="rlJoin"><input id="rlCode" class="rlCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Lobby code"><button class="big" id="rlJoinBtn">JOIN</button></div>'+
     '<div id="rlLobby"><div class="tag">Lobby code</div><div class="rlBig" id="rlCodeBig"></div><button class="mid" id="rlShare">SHARE LINK</button>'+
     '<ul class="rlList" id="rlList"></ul><div id="rlExtra"></div><button class="big" id="rlStart">START</button><div class="tag" id="rlCount"></div></div>'+
@@ -8908,21 +8994,43 @@ function netMount(){
   var el=$('royaleLobby'); if(el&&$('rlOv')) return el;
   el=Royale.mount('royaleLobby',netHtml(),NET_CSS);
   function on(id,fn){ var b=$(id); if(b&&b.addEventListener) b.addEventListener('click',function(e){ if(e&&e.stopPropagation) e.stopPropagation(); Snd.init(); Snd.play('ui'); fn(); }); }
-  on('rlHost',function(){ Royale.net.host(netReadName(),netSkin()); });
+  on('rlHost',function(){ Royale.net.host(netReadName(),netSkin(),{tone:netTone()}); });
   on('rlToJoin',function(){ netS.screen='join'; netS.msg=''; netRender(); });
   on('rlJoinBtn',netJoinClick);
   on('rlStart',function(){ Royale.net.start(); });
   on('rlShare',netShare);
   on('rlBack',netBack);
-  var ov=$('rlOv'); if(ov&&ov.addEventListener) ov.addEventListener('keydown',function(e){ e.stopPropagation(); if(e.key==='Enter'){ if(netS.screen==='join') netJoinClick(); else if(netS.screen==='menu') Royale.net.host(netReadName(),netSkin()); } });
+  var ov=$('rlOv'); if(ov&&ov.addEventListener) ov.addEventListener('keydown',function(e){ e.stopPropagation(); if(e.key==='Enter'){ if(netS.screen==='join') netJoinClick(); else if(netS.screen==='menu') Royale.net.host(netReadName(),netSkin(),{tone:netTone()}); } });
+  var lk=$('rlLook'); if(lk&&lk.addEventListener) lk.addEventListener('click',function(e){ var t=e&&e.target, sk=null, tn=null;
+    while(t&&t!==lk){ sk=t.getAttribute?t.getAttribute('data-rlskin'):null; tn=t.getAttribute?t.getAttribute('data-rltone'):null; if(sk||tn) break; t=t.parentNode; }
+    if(!(sk||tn)) return; if(e.stopPropagation) e.stopPropagation(); Snd.init(); Snd.play('ui'); if(sk) netPickSkin(sk); else netPickTone(tn); });
   var ci=$('rlCode'); if(ci&&ci.addEventListener) ci.addEventListener('input',function(){ var v=String(ci.value||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,4); if(ci.value!==v) ci.value=v; });
   var ni=$('rlName'); if(ni){ ni.value=netS.name||netStoredName(); if(ni.addEventListener) ni.addEventListener('input',function(){ var v=String(ni.value||'').replace(/[^A-Za-z0-9 ]/g,'').slice(0,12); if(ni.value!==v) ni.value=v; }); }
   return el;
 }
 function netStoredName(){ try{ return localStorage.getItem('horde_royale_name')||''; }catch(e){ return ''; } }
 function netReadName(){ var ni=$('rlName'), n=netName(ni?ni.value:netS.name); try{ localStorage.setItem('horde_royale_name',n); }catch(e){} return n; }
-function netSkin(){ return META.skin&&skinUnlocked(META.skin)?META.skin:'zombie'; }
-function netJoinClick(){ var ci=$('rlCode'), c=String(ci?ci.value:'').toUpperCase().replace(/[^A-Z]/g,''); if(c.length!==4){ netS.msg='Four letters.'; netRender(); return; } Royale.net.join(c,netReadName(),netSkin()); }
+/* What you wear in a match (owner, 21 Oct): its own pick in horde_royale_look, so the campaign's save and unlocks never
+   change; with no pick yet, the monster and colour you wear in the campaign. ROYALE_OPEN_LOOKS opens everything. */
+var NET_LOOK_KEY='horde_royale_look', NET_LOOK_IDS=['zombie','vampire','werewolf','mummy'];
+function netSkinOpen(sk){ return ROYALE_OPEN_LOOKS||skinUnlocked(sk); }
+function netToneOpen(sk,t){ return ROYALE_OPEN_LOOKS||toneOwned(sk,t); }
+function netLook(){ var o=null; try{ o=JSON.parse(localStorage.getItem(NET_LOOK_KEY)||'null'); }catch(e){ o=null; }
+  var mine=META.skin&&skinUnlocked(META.skin)?META.skin:'zombie', sk=o&&typeof o.skin==='string'&&netOwn(SKINS,o.skin)&&netSkinOpen(o.skin)?o.skin:mine;
+  var t=netToneOk(sk,o&&o.skin===sk?o.tone:(META.tone||{})[sk]); if(!netToneOpen(sk,t)) t=TONES[sk][0].id; return {skin:sk,tone:t}; }
+function netSetLook(sk,t){ try{ localStorage.setItem(NET_LOOK_KEY,JSON.stringify({skin:sk,tone:t})); }catch(e){} }
+function netSkin(){ return netLook().skin; }
+function netTone(){ return netLook().tone; }
+function netPickSkin(sk){ if(!netOwn(SKINS,sk)||!netSkinOpen(sk)) return false; var L=netLook(); if(L.skin!==sk) netSetLook(sk,TONES[sk][0].id); netRender(); return true; }
+function netPickTone(t){ var L=netLook(); if(!toneDef(L.skin,t)||!netToneOpen(L.skin,t)) return false; netSetLook(L.skin,t); netRender(); return true; }
+function netLookHtml(){ var L=netLook(), h='<div class="skinrow">', i, T=TONES[L.skin];
+  for(i=0;i<NET_LOOK_IDS.length;i++){ var sid=NET_LOOK_IDS[i], S=SKINS[sid], un=netSkinOpen(sid), on=L.skin===sid;
+    h+='<button class="skin'+(on?' on':'')+(un?'':' locked')+'" data-rlskin="'+sid+'" aria-pressed="'+on+'"'+(un?'':' aria-disabled="true"')+' title="'+S.name+'">'+S.icon+'<small>'+(un?S.name:':lock:')+'</small></button>'; }
+  h+='</div><div class="tonerow">';
+  for(i=0;i<T.length;i++){ var t=T[i], own=netToneOpen(L.skin,t.id);
+    h+='<button class="tone'+(t.id===L.tone?' on':'')+(own?'':' locked')+(t.mech?' mech':'')+'" data-rltone="'+t.id+'" aria-pressed="'+(t.id===L.tone)+'" aria-label="'+t.full+'" title="'+t.full+'"><i style="--tc:'+t.skin+'"></i>'+(own?'':':lock:')+'</button>'; }
+  return Art.rich(h+'</div>'); }
+function netJoinClick(){ var ci=$('rlCode'), c=String(ci?ci.value:'').toUpperCase().replace(/[^A-Z]/g,''); if(c.length!==4){ netS.msg='Four letters.'; netRender(); return; } Royale.net.join(c,netReadName(),netSkin(),{tone:netTone()}); }
 /* BACK: one screen up; off the menu to the title (after a match, quit() takes the match's leftovers down). */
 function netBack(){ var was=netS.screen; if(netS.role) Royale.net.leave(); netS.msg='';
   if(was==='join'&&state!=='lobby'){ netS.screen='menu'; netRender(); return; }
@@ -8940,10 +9048,11 @@ function netWait(text){ netMount(); var w=$('rlWait'); if(!w) return; netS.waiti
 function netRender(){
   var ov=$('rlOv'); if(!ov) return; var sc=netS.screen, i, html='';
   function vis(id,on){ var e=$(id); if(e) setCls(e,'hidden',!on); }
-  vis('rlMenu',sc==='menu'); vis('rlMenuB',sc==='menu'); vis('rlNameRow',sc==='menu'||sc==='join'); vis('rlJoin',sc==='join'); vis('rlLobby',sc==='lobby');
+  vis('rlMenu',sc==='menu'); vis('rlMenuB',sc==='menu'); vis('rlNameRow',sc==='menu'||sc==='join'); vis('rlLook',sc==='menu'||sc==='join');
+  var lk=$('rlLook'); if(lk&&(sc==='menu'||sc==='join')){ var lh=netLookHtml(); if(lk._h!==lh){ lk._h=lh; lk.innerHTML=lh; } } vis('rlJoin',sc==='join'); vis('rlLobby',sc==='lobby');
   var cb=$('rlCodeBig'); if(cb) cb.textContent=netS.code;
   for(i=0;i<netS.lobby.length;i++){ var L=netS.lobby[i], sk=SKINS[netSkinOk(L.skin)];
-    html+='<li><span class="rlDot" style="background:'+ROYALE_COLOURS[(L.colour|0)%ROYALE_COLOURS.length]+'"></span><span class="rlSkin">'+Art.rich(sk.icon)+'</span><span>'+netEsc(L.name)+'</span><span class="rlWho">'+(L.id===netS.me?'you':'')+(L.id===1?(L.id===netS.me?' · host':'host'):'')+'</span></li>'; }
+    html+='<li><span class="rlDot" style="background:'+ROYALE_COLOURS[(L.colour|0)%ROYALE_COLOURS.length]+'"></span><span class="rlSkin">'+Art.rich(sk.icon)+'</span><span class="rlTone" style="background:'+toneDef(netSkinOk(L.skin),netToneOk(L.skin,L.tone)).skin+'"></span><span>'+netEsc(L.name)+'</span><span class="rlWho">'+(L.id===netS.me?'you':'')+(L.id===1?(L.id===netS.me?' · host':'host'):'')+'</span></li>'; }
   var ul=$('rlList'); if(ul&&ul._h!==html){ ul._h=html; ul.innerHTML=html; }
   vis('rlStart',netS.role==='host'); vis('rlShare',!!netS.code);
   if(Royale.bots&&Royale.bots.lobby) Royale.bots.lobby(sc==='lobby'&&netS.role==='host',netS.lobby.length); // the bots lane fills #rlExtra (ROYALE.md §11)
@@ -8989,10 +9098,10 @@ Royale.net={
   /* Host a lobby. opts (tests): {transport, code}. When a match is already running here (a host match), adopt it. */
   host:function(name,skin,opts){
     opts=opts||{}; if(netS.role){ Royale.net.leave(); netS.screen='menu'; netShow(true); }
-    netS.role='host'; netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=1; netS.msg=''; if(!opts.transport) netProbeRelay();
+    netS.role='host'; netS.name=netName(name); netS.skin=netSkinOk(skin); netS.tone=netToneOk(netS.skin,opts.tone); netS.me=1; netS.msg=''; if(!opts.transport) netProbeRelay();
     netS.code=opts.code||netCode(); netS.autoT=NET_AUTO; netS.pend=[]; netS.peers={};
-    if(G&&G.match&&G.match.host){ netS.started=true; netS.lobby=[]; for(var i=0;i<G.players.length;i++){ var P=G.players[i]; if(P.bot) continue; netS.lobby.push({id:P.id,name:P.name,colour:P.colour,skin:P.skin,peer:null}); } netS.me=G.me.id; } // bots are never in the lobby (§11); they travel in the start list
-    else netS.lobby=[{id:1,name:netS.name,colour:0,skin:netS.skin,peer:null}];
+    if(G&&G.match&&G.match.host){ netS.started=true; netS.lobby=[]; for(var i=0;i<G.players.length;i++){ var P=G.players[i]; if(P.bot) continue; netS.lobby.push({id:P.id,name:P.name,colour:P.colour,skin:P.skin,tone:P.tone,peer:null}); } netS.me=G.me.id; } // bots are never in the lobby (§11); they travel in the start list
+    else netS.lobby=[{id:1,name:netS.name,colour:0,skin:netS.skin,tone:netS.tone,peer:null}];
     var tries=0;
     netMakeTransport(opts,function(err,T){ if(err){ netS.role=null; return; }
       (function go(){ T.open('host',netS.code,function(e){
@@ -9002,11 +9111,11 @@ Royale.net={
   },
   join:function(code,name,skin,opts){
     opts=opts||{}; if(netS.role){ Royale.net.leave(); netS.screen='join'; netShow(true); } // a second tap while the first knock runs: start over, panel still up
-    netS.role='guest'; netS.code=String(code||'').toUpperCase(); netS.name=netName(name); netS.skin=netSkinOk(skin); netS.me=0; netS.lobby=[]; netS.joinT=0; netS.msg='Knocking…'; netRender(); if(!opts.transport) netProbeRelay();
+    netS.role='guest'; netS.code=String(code||'').toUpperCase(); netS.name=netName(name); netS.skin=netSkinOk(skin); netS.tone=netToneOk(netS.skin,opts.tone); netS.me=0; netS.lobby=[]; netS.joinT=0; netS.msg='Knocking…'; netRender(); if(!opts.transport) netProbeRelay();
     netMakeTransport(opts,function(err,T){ if(err){ netS.role=null; return; }
       T.open('guest',netS.code,function(e){
         if(e){ netS.role=null; netS.msg=e==='nolobby'?'No lobby with that code.':netServiceMsg(e); netRender(); return; }
-        netS.msg=''; netBind(T); netS.helloAt=netNow(); T.send('host',{t:'hello',ver:ROYALE_VER,name:netS.name,skin:netS.skin}); netStartTimer(); netRender(); }); });
+        netS.msg=''; netBind(T); netS.helloAt=netNow(); T.send('host',{t:'hello',ver:ROYALE_VER,name:netS.name,skin:netS.skin,tone:netS.tone}); netStartTimer(); netRender(); }); });
   },
   start:function(){
     if(netS.role!=='host'||netS.started) return false;
@@ -9957,6 +10066,7 @@ function botsWire(el){
 function botsRot(specs){ var N=Royale.net, s=N?String((N.code?N.code():N._s?N._s().code:'')||''):'', h=7, i;
   if(!s) for(i=0;i<specs.length;i++) s+=String(specs[i].name||'');
   for(i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%9973; return h%BOTS_NAMES.length; }
+var BOTS_SKINS=['zombie','vampire','werewolf','mummy']; // the grand opening dresses bots in everything (ROYALE_OPEN_LOOKS)
 function botsPlan(specs){
   if(G&&G.match) return []; // a match already running (a host that adopted one) has every player it will have
   specs=specs||[]; var nh=specs.length, n=botsCount(nh), out=[], used={}, taken={}, maxId=0, rot=botsRot(specs), ni=0, col=0, i, t;
@@ -9966,7 +10076,8 @@ function botsPlan(specs){
     var c=col<ROYALE_COLOURS.length?col:(maxId+i)%ROYALE_COLOURS.length, nm=''; used[c]=1;
     for(t=0;t<BOTS_NAMES.length&&!nm;t++){ var cand=BOTS_NAMES[(rot+ni++)%BOTS_NAMES.length]; if(!taken[cand.toLowerCase()]) nm=cand; }
     if(!nm) nm='Horde '+(maxId+1+i); taken[nm.toLowerCase()]=1;
-    out.push({id:maxId+1+i,name:nm,colour:c,skin:'zombie',bot:true});
+    var bs=BOTS_SKINS[(rot+i)%BOTS_SKINS.length], bt=TONES[bs][(rot+3*i)%TONES[bs].length].id; // a look from the code too: varied, never random
+    out.push({id:maxId+1+i,name:nm,colour:c,skin:bs,tone:bt,bot:true});
   }
   return out;
 }
@@ -10653,6 +10764,319 @@ Royale.cars={
   list:function(){ return carsList; }, guest:function(){ return carsG; }, nav:function(){ return carsNav; }, want:carsWant,
   waiting:function(){ return carsWait; }, clock:function(){ return carsClk; }, dist:carsDist, frame:carsSetFrame, bail:carsBail, spawn:carsSpawn, make:carsMake, bump:carsBump, buildNav:carsNavBuild
 };
+/* ---------- Parade Royale: tricks (lane I; ROYALE.md §12, §6.5; docs/royale/briefs/I-tricks.md) ---------- */
+/* A crate on the street, a three-card pick, a tap on a rival's arrow or tag, and the trick lands round them: two mini
+   bosses (three on the crown), a squad of five, or a ring of fire. The host spawns, places, validates and rolls
+   everything (mrand); a guest only shows its card and chip and sends {a:'pick',k} and {a:'aim',id}. Particles roll
+   jrand(). Events: {k:'x',l:'tricks',a:'got'|'kind'|'used', ...}, must-deliver; every device presents them the same way. */
+(function(){
+var TRICK_FROM=20, TRICK_EVERY=25, TRICK_MAX=3, TRICK_LIFE=45, TRICK_REACH=22, TRICK_HOLD=10, TRICK_PICK_T=8,
+  TRICK_SEND=1500, TRICK_NEAR=300, TRICK_FAR=900, TRICK_GAP=220, TRICK_R=16,
+  TRICK_BOSS_N=2, TRICK_BOSS_CROWN=3, TRICK_BOSS_R=350, TRICK_SQUAD_N=5, TRICK_SQUAD_R=300, TRICK_FIRE_N=12, TRICK_FIRE_R=220, TRICK_FIRE_LIFE=10,
+  TRICK_AIM_WAIT=1.5, TRICK_NAME_T=1.6, TRICK_BOT_T=1;
+var TRICK_KINDS=['bosses','squad','fire'];
+var TRICK_INFO={
+  bosses:{name:'BOSSES',line:'Two mini bosses drop in on them.',icon:'trophy',pc:'#ffc65a',snd:'braaam',col:['#ffc65a','#efe7d2','#8a8296'],hit:'{n} sent bosses after you.'},
+  squad:{name:'SQUAD',line:'Five armed strangers, all for them.',icon:'soldier',pc:'#78c7e8',snd:'alarm',col:['#78c7e8','#efe7d2','#ff5a66'],hit:'{n} sent a squad after you.'},
+  fire:{name:'FIRE',line:'Their street catches fire.',icon:'fire',pc:'#ff9f43',snd:'ignite',col:['#ffcf6b','#ff8a2b','#ff5a1f'],hit:'{n} set you alight.'}
+};
+
+/* The crate: an original ink-and-paper badge (a wooden crate with a red bow), registered the way ui.js registers the crown. */
+if(Art&&Art.defs) Art.defs.trick={label:'Trick crate',shapes:[
+  {d:'M4 13 L28 12 28.5 29.5 4.5 30.5Z',c:'#c98b4a',s:'#171923',w:1.8},
+  {d:'M2.5 9 L29.5 8 29.5 13.5 2.5 14.5Z',c:'#e3a964',s:'#171923',w:1.8},
+  {d:'M5 21.5 L28 20.5 M10 14.5 L10.5 30 M22 13.5 L22.5 29.5',c:'none',s:'#7a4a24',w:1.4},
+  {d:'M14 8.6 L18 8.4 18.3 30 14.3 30.2Z',c:'#e9514e',s:'#171923',w:1.4},
+  {d:'M16 8.5 Q8.5 0.5 6.2 4.4 Q4.8 8.8 16 8.5Z M16 8.5 Q23.5 0.5 25.8 4.4 Q27.2 8.8 16 8.5Z',c:'#e9514e',s:'#171923',w:1.5},
+  {d:'M14.2 8.5 a 1.8 1.8 0 1 0 3.6 0 a 1.8 1.8 0 1 0 -3.6 0',c:'#b3202b',s:'#171923',w:1.2},
+  {d:'M6 16.5 L8.5 16.4 M24.5 15.8 L26.6 15.7',c:'none',s:'#fff0ca',w:1.4}
+]};
+
+/* Lane state, reset whenever G.match is a new object. Host: crates [{id,x,y,t}], the schedule, the hold-off per player id.
+   Guest: gc, the crates near its own head as a flat [id,x,y,…]; fires, local copies of a fire trick's hazards to draw. */
+var S=tricksFresh();
+function tricksFresh(){ return {M:null,crates:[],seq:0,nextT:TRICK_FROM,cd:{},gc:[],fires:[],card:false,cardEl:null,cardT:0,aimT:0,name:'',nameKind:'',nameT:0,chip:'',chipW:0}; }
+function tricksSync(){ var M=G&&G.match; if(M===S.M) return; tricksCard(false); tricksDropFires(); var el=S.cardEl; S=tricksFresh(); S.M=M; S.cardEl=el; }
+function tricksOwn(o,k){ return Object.prototype.hasOwnProperty.call(o,k); }
+function tricksKind(k){ return typeof k==='string'&&tricksOwn(TRICK_INFO,k)?k:null; }
+function tricksNum(v){ return typeof v==='number'&&isFinite(v); }
+function tricksPush(ev){ G.match.events.push(ev); tricksPresent(ev); } // the host's own device acts at push time (§6.5)
+
+/* ---- crates (host) ---- */
+/* Free street: on the map, nothing solid, hot or trapped underfoot, not in a shop, courtyard or vault yard (refuges lock),
+   not in the arena, inside the ring with room to spare, clear of laser fences and of the other crates. */
+function tricksSpotOk(x,y){
+  var F=G.F, M=G.match, R=M.ring, r=TRICK_R+4, i, Rs=F.refuges||[], A=F.arena;
+  if(x<r+60||y<r+60||x>F.w-r-60||y>F.h-r-60) return false;
+  if(Math.hypot(x-R.x,y-R.y)>R.r-150) return false;
+  if(pointBlocked(F,x,y,r)||navBlocked(F,x,y,r)) return false;
+  if(A&&x>A.x-40&&x<A.x+A.w+40&&y>A.y-40&&y<A.y+A.h+40) return false;
+  for(i=0;i<Rs.length;i++){ var q=Rs[i].inside; if(q&&x>q.x-r&&x<q.x+q.w+r&&y>q.y-r&&y<q.y+q.h+r) return false; }
+  for(i=0;i<(F.fences||[]).length;i++){ var fe=F.fences[i]; if(segDist(x,y,fe.x1,fe.y1,fe.x2,fe.y2)<r+24) return false; }
+  for(i=0;i<S.crates.length;i++){ var c=S.crates[i]; if(Math.hypot(c.x-x,c.y-y)<TRICK_GAP) return false; }
+  return true;
+}
+/* 300-900 px from a random living head, rolled on the match generator. */
+function tricksSpawnCrate(){
+  if(S.crates.length>=TRICK_MAX) return null;
+  var P=randomLiving(); if(!P) return null;
+  var hd=headOf(P), t;
+  for(t=0;t<40;t++){ var a=mrand()*TAU, d=TRICK_NEAR+mrand()*(TRICK_FAR-TRICK_NEAR), x=Math.round(hd.x+Math.cos(a)*d), y=Math.round(hd.y+Math.sin(a)*d);
+    if(tricksSpotOk(x,y)){ var c={id:++S.seq,x:x,y:y,t:0}; S.crates.push(c); return c; } }
+  return null;
+}
+function tricksEligible(P){ return P.alive&&!P.trick&&!(S.cd[P.id]>0)&&!P.left; }
+/* A mini boss beaten in a match earns its killer a trick (owner, 22 Oct: "activate traps if mini bosses were defeated"),
+   the crates' three-card pick with BOSS DOWN on it. Host only (defeatMini runs there); one trick held at a time. */
+function tricksEarn(P,x,y){
+  var M=G.match; if(!M||!M.host||M.phase!=='play'||!P||G.players.indexOf(P)<0||!P.alive||P.left||P.trick) return false;
+  P.trick={kind:null,target:0,t:0}; tricksPush({k:'x',l:'tricks',a:'got',id:P.id,c:0,x:Math.round(x),y:Math.round(y),src:'mini'}); return true;
+}
+/* Bots (§11) hold a trick for a second, pick one, then send it at the crown, else the nearest living rival. */
+function tricksBot(P,tr){
+  if(tr.t<TRICK_BOT_T&&!tr.kind) return; // a crate's or a mini boss's trick: held a second, then picked and sent
+  if(!tr.kind) tricksSetKind(P,TRICK_KINDS[Math.min(2,Math.floor(mrand()*3))]); // and aim at once
+  if(tr.target) return;
+  var ps=G.players, hd=headOf(P), Q=null, qd=1e18, i, C=G.match.crown?playerById(G.match.crown):null;
+  if(C&&C!==P&&C.alive&&!C.left) Q=C;
+  else for(i=0;i<ps.length;i++){ var R=ps[i]; if(R===P||!R.alive||R.left) continue; var h2=headOf(R), d=(h2.x-hd.x)*(h2.x-hd.x)+(h2.y-hd.y)*(h2.y-hd.y); if(d<qd){ qd=d; Q=R; } }
+  if(Q) tricksUse(P,Q);
+}
+/* The first living head within hd.r + 22 takes it; on a tie the lower id. A player holds one trick at a time. */
+function tricksPickup(){
+  var ps=G.players, i, j;
+  for(i=S.crates.length-1;i>=0;i--){ var c=S.crates[i], best=null;
+    for(j=0;j<ps.length;j++){ var P=ps[j]; if(!tricksEligible(P)) continue; var hd=headOf(P), dx=hd.x-c.x, dy=hd.y-c.y, rr2=hd.r+TRICK_REACH;
+      if(dx*dx+dy*dy<=rr2*rr2&&(!best||P.id<best.id)) best=P; }
+    if(best){ S.crates.splice(i,1); best.trick={kind:null,target:0,t:0}; tricksPush({k:'x',l:'tricks',a:'got',id:best.id,c:c.id,x:c.x,y:c.y}); } }
+}
+function tricksHost(dt){
+  var M=G.match, ps=G.players, i, k;
+  if(M.clock>=S.nextT){ if(S.crates.length>=TRICK_MAX) S.nextT+=TRICK_EVERY; else if(tricksSpawnCrate()) S.nextT+=TRICK_EVERY; else S.nextT=M.clock+1; } // no free spot: try again in a second
+  for(i=S.crates.length-1;i>=0;i--){ S.crates[i].t+=dt; if(S.crates[i].t>=TRICK_LIFE) S.crates.splice(i,1); }
+  for(k in S.cd) if(S.cd[k]>0) S.cd[k]-=dt;
+  for(i=0;i<ps.length;i++){ var P=ps[i], tr=P.trick; if(!tr) continue; if(!P.alive){ P.trick=null; continue; }
+    if(P.bot){ tr.t+=dt; tricksBot(P,tr); continue; }
+    if(tr.kind) continue;
+    tr.t+=dt; if(tr.t>=TRICK_PICK_T) tricksSetKind(P,TRICK_KINDS[Math.min(2,Math.floor(mrand()*3))]); } // no choice in 8 s: the host rolls one
+  tricksPickup();
+}
+function tricksSetKind(P,k){ P.trick.kind=k; P.trick.t=0; tricksPush({k:'x',l:'tricks',a:'kind',id:P.id,kind:k}); }
+
+/* ---- use (host): the target bound, every effect placed round its head ---- */
+/* A clear spot near the circle point at angle a: a few small turns and steps in or out, else the nearest open ground. */
+function tricksRingSpot(cx,cy,R,a,r){
+  var F=G.F, j, s;
+  for(j=0;j<9;j++){ var aa=a+((j+1)>>1)*(j%2?1:-1)*0.12;
+    for(s=0;s<3;s++){ var rr=R+(s===1?-36:s===2?36:0), x=cx+Math.cos(aa)*rr, y=cy+Math.sin(aa)*rr; if(!navBlocked(F,x,y,r,true)) return {x:x,y:y}; } }
+  return freeNear(F,cx+Math.cos(a)*R,cy+Math.sin(a)*R,r);
+}
+function tricksBosses(Q,pts){
+  var hd=G.head, n=G.match.crown===Q.id?TRICK_BOSS_CROWN:TRICK_BOSS_N, a0=mrand()*TAU, k, kinds=['manager','champ','director'];
+  for(k=0;k<n;k++){ var m=cityMini(true); if(!m){ m=spawnMini(G.F,G.sd,kinds[Math.floor(mrand()*3)%3],[]); if(m){ m.city=true; m.patrolT=6; } } if(!m) continue;
+    var p=tricksRingSpot(hd.x,hd.y,TRICK_BOSS_R,a0+k*TAU/n,m.r+4);
+    m.x=p.x; m.y=p.y; m.px=hd.x; m.py=hd.y; m.awake=true; m.state='chase'; m.t=0; m.trick=true; m.h=m.face=Math.atan2(hd.y-p.y,hd.x-p.x);
+    pts.push(Math.round(p.x),Math.round(p.y)); }
+}
+function tricksSquad(Q,pts){
+  var hd=G.head, a0=mrand()*TAU, id=++G.squadN, made=0, k;
+  for(k=0;k<TRICK_SQUAD_N;k++){ var p=tricksRingSpot(hd.x,hd.y,TRICK_SQUAD_R,a0+k*TAU/TRICK_SQUAD_N,HUMAN_R+4), arm=rampArm(), h=citySpawn(p,arm);
+    if(!h){ h=spawnHuman(false,cityProf(),{x:p.x,y:p.y,exact:true}); if(h){ armHuman(h,arm); h.alertT=8; h.born=0; h.city=true; } } // the street is full: they come anyway
+    if(!h) continue; made++;
+    h.squad=id; h.tac='press'; h.tacSide=k%2?1:-1; h.home={x:p.x,y:p.y}; h.h=h.face=Math.atan2(hd.y-p.y,hd.x-p.x);
+    pts.push(Math.round(p.x),Math.round(p.y)); }
+  if(made) (G.squadSz||(G.squadSz={}))[G.stage+':'+id]=made;
+}
+function tricksFire(Q,pts){
+  var F=G.F, hd=G.head, a0=mrand()*TAU, k;
+  for(k=0;k<TRICK_FIRE_N;k++){ var a=a0+k*TAU/TRICK_FIRE_N, x=hd.x+Math.cos(a)*TRICK_FIRE_R, y=hd.y+Math.sin(a)*TRICK_FIRE_R;
+    if(navBlocked(F,x,y,8,true)){ var q=freeNear(F,x,y,8); x=q.x; y=q.y; }
+    x=Math.round(x); y=Math.round(y); F.hazards.push({kind:'fire',x:x,y:y,r:26,life:TRICK_FIRE_LIFE}); pts.push(x,y); }
+}
+function tricksUse(P,Q){
+  var kind=P.trick.kind, pts=[], was=G.cur;
+  P.trick.target=Q.id;
+  bindPlayer(Q);
+  if(kind==='bosses') tricksBosses(Q,pts); else if(kind==='squad') tricksSquad(Q,pts); else tricksFire(Q,pts);
+  if(was) bindPlayer(was);
+  P.trick=null; S.cd[P.id]=TRICK_HOLD;
+  tricksPush({k:'x',l:'tricks',a:'used',by:P.id,of:Q.id,kind:kind,p:pts});
+  return true;
+}
+
+/* The host's door for every choice: a guest's message (net, rate-limited), the host's own taps and anything a bot does.
+   Nothing is trusted: the phase, the sender alive and holding a trick, a real kind, a living target who is not the sender. */
+function tricksMsg(P,m){
+  var M=G.match; if(!M||!M.host||M.phase!=='play'||!m||typeof m!=='object'||!P||G.players.indexOf(P)<0||!P.alive) return false;
+  var tr=P.trick; if(!tr) return false;
+  if(m.a==='pick'){ var k=tricksKind(m.k); if(!k||tr.kind) return false; tricksSetKind(P,k); return true; }
+  if(m.a==='aim'){ if(!tr.kind||tr.target) return false; if(m.k!==undefined&&m.k!==tr.kind) return false;
+    var id=m.id; if(!tricksNum(id)||id!==Math.floor(id)) return false;
+    var Q=playerById(id); if(!Q||Q===P||!Q.alive||Q.left) return false;
+    return tricksUse(P,Q); }
+  return false;
+}
+
+/* ---- presentation, every device: the host at push time, a guest from onEvent ---- */
+function tricksName(id){ var P=playerById(id); return P?P.name:'Someone'; }
+function tricksAt(pts){ var x=0, y=0, n=pts.length>>1, i; for(i=0;i<n;i++){ x+=pts[i*2]; y+=pts[i*2+1]; } return n?{x:x/n,y:y/n}:null; }
+function tricksMe(fn){ var was=G.cur; if(G.me&&was!==G.me) bindPlayer(G.me); fn(); if(was&&was!==G.cur) bindPlayer(was); } // stamps and floats belong to this device's player
+function tricksPresent(ev){
+  var me=G.me, i, P;
+  if(ev.a==='got'){
+    for(i=0;i+2<S.gc.length;i+=3) if(S.gc[i]===ev.c){ S.gc.splice(i,3); break; }
+    fxParts(ev.x,ev.y,14,['#e3a964','#e9514e','#fff0ca'],1); Snd.play('power',ev.x,ev.y);
+    P=playerById(ev.id); if(P&&P.alive&&!P.trick) P.trick={kind:null,target:0,t:0};
+    if(me&&ev.id===me.id&&me.alive){ Haptic.tap(20); S.src=ev.src==='mini'?'mini':'crate'; tricksCard(true); }
+  } else if(ev.a==='kind'){
+    P=playerById(ev.id); if(P&&P.alive){ if(!P.trick) P.trick={kind:null,target:0,t:0}; P.trick.kind=ev.kind; }
+    if(me&&ev.id===me.id) tricksCard(false);
+  } else if(ev.a==='used'){
+    var I=TRICK_INFO[ev.kind], pts=ev.p||[], c=tricksAt(pts), Q=playerById(ev.of);
+    P=playerById(ev.by); if(P) P.trick=null;
+    for(i=0;i+1<pts.length;i+=2) fxParts(pts[i],pts[i+1],ev.kind==='fire'?6:12,I.col,ev.kind==='fire'?0.6:1);
+    if(c) Snd.play(I.snd,c.x,c.y);
+    if(!G.match.host&&ev.kind==='fire') for(i=0;i+1<pts.length;i+=2){ var hz={kind:'fire',x:pts[i],y:pts[i+1],r:26,life:TRICK_FIRE_LIFE,trickG:true}; G.F.hazards.push(hz); S.fires.push(hz); } // a guest draws the fire the host placed
+    if(me&&ev.of===me.id){ banner(I.hit.replace('{n}',tricksName(ev.by))); Haptic.tap(40); }
+    if(me&&ev.by===me.id){ tricksCard(false); S.aimT=0; S.name=Q?Q.name:''; S.nameKind=ev.kind; S.nameT=TRICK_NAME_T; tricksMe(function(){ stamp('SENT',2,G.head.x,G.head.y); }); }
+  }
+}
+/* A guest's local fire copies burn out on the host's clock (10 s); the host's own hazards age in update(). */
+function tricksFires(dt){ var F=G.F, i; for(i=S.fires.length-1;i>=0;i--){ var hz=S.fires[i]; hz.life-=dt; if(hz.life<=0){ var j=F.hazards.indexOf(hz); if(j>=0) F.hazards.splice(j,1); S.fires.splice(i,1); } } }
+function tricksDropFires(){ var F=G&&G.F, i; if(F) for(i=0;i<S.fires.length;i++){ var j=F.hazards.indexOf(S.fires[i]); if(j>=0) F.hazards.splice(j,1); } S.fires.length=0; }
+/* A guest's event, checked before anything reads it. */
+function tricksEventOk(ev){
+  if(!ev||typeof ev!=='object') return false;
+  if(ev.a==='got') return tricksNum(ev.id)&&tricksNum(ev.c)&&tricksNum(ev.x)&&tricksNum(ev.y)&&(ev.src===undefined||ev.src==='mini');
+  if(ev.a==='kind') return tricksNum(ev.id)&&!!tricksKind(ev.kind);
+  if(ev.a==='used'){ if(!tricksNum(ev.by)||!tricksNum(ev.of)||!tricksKind(ev.kind)||!Array.isArray(ev.p)||ev.p.length>2*TRICK_FIRE_N) return false;
+    for(var i=0;i<ev.p.length;i++) if(!tricksNum(ev.p[i])) return false; return true; }
+  return false;
+}
+
+/* ---- the card: PICK ONE, three buttons, the match running behind it ---- */
+var TRICK_CSS=
+  '#hud.hidden~#royale #royaleTrick{display:none}'+
+  '#royaleTrick .rtCard{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:6;width:min(460px,calc(100% - 24px));box-sizing:border-box;background:#232a33;border:3px solid #171923;border-radius:18px;box-shadow:0 6px 0 #171923;padding:10px 10px 12px;pointer-events:auto;font-family:var(--font);animation:rtIn .22s ease-out both}'+
+  '#royaleTrick .rtHead{display:flex;align-items:center;gap:8px;margin:0 4px 8px}'+
+  '#royaleTrick .rtHead .h-icon{width:30px;height:30px;flex:none}'+
+  '#royaleTrick .rtK{font:800 11px var(--font);letter-spacing:3px;color:#d9cfb6;margin-left:auto}'+
+  '#royaleTrick .rtT{font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:1px;line-height:1;color:#8fd14f;text-shadow:3px 3px 0 #171923}'+
+  '#royaleTrick .rtGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}'+
+  '#royaleTrick .rtBtn{min-width:0;background:#faefdc;color:#171923;border:3px solid #171923;border-radius:14px;box-shadow:0 4px 0 #171923;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;font-family:var(--font);touch-action:manipulation}'+
+  '#royaleTrick .rtBtn:active{transform:translateY(2px);box-shadow:0 2px 0 #171923}'+
+  '#royaleTrick .rtBtn:focus-visible{outline:3px solid var(--amber);outline-offset:2px}'+
+  '#royaleTrick .rtIc{width:44px;height:44px;border-radius:50%;background:var(--pc);border:3px solid #171923;display:flex;align-items:center;justify-content:center;box-sizing:border-box}'+
+  '#royaleTrick .rtIc .h-icon{width:28px;height:28px}'+
+  '#royaleTrick .rtBtn b{font-family:var(--display);font-weight:400;font-size:21px;letter-spacing:.5px;line-height:1}'+
+  '#royaleTrick .rtBtn i{font-style:normal;font-size:12px;line-height:1.25;color:#4a4458}'+
+  '#royaleTrick .rtBar{height:5px;margin:10px 4px 0;background:rgba(239,231,210,.18);border-radius:3px;overflow:hidden}'+
+  '#royaleTrick .rtBar span{display:block;height:100%;background:#d7263d;transform-origin:left;animation:rtTime '+TRICK_PICK_T+'s linear both}'+
+  '@keyframes rtTime{from{transform:scaleX(1)}to{transform:scaleX(0)}}'+
+  '@keyframes rtIn{from{transform:translate(-50%,24px);opacity:0}to{transform:translate(-50%,0);opacity:1}}'+
+  '@media (prefers-reduced-motion: reduce){#royaleTrick .rtCard{animation:none}}';
+function tricksCardHtml(){
+  var h='<div class="rtCard'+(calm()?' calm':'')+'" role="dialog" aria-label="Pick a trick"><div class="rtHead">'+Art.svg('trick')+'<span class="rtT">PICK ONE</span><span class="rtK">'+(S.src==='mini'?'BOSS DOWN':'TRICK CRATE')+'</span></div><div class="rtGrid">', i;
+  for(i=0;i<TRICK_KINDS.length;i++){ var k=TRICK_KINDS[i], I=TRICK_INFO[k];
+    h+='<button type="button" class="rtBtn" data-k="'+k+'"><span class="rtIc" style="--pc:'+I.pc+'">'+Art.svg(I.icon)+'</span><b>'+I.name+'</b><i>'+I.line+'</i></button>'; }
+  return h+'</div><div class="rtBar"><span></span></div></div>';
+}
+function tricksCardTap(e){
+  var t=e&&e.target, b=t&&t.closest?t.closest('[data-k]'):t, k=b&&b.getAttribute?tricksKind(b.getAttribute('data-k')):null; if(!k) return;
+  if(e.preventDefault) e.preventDefault(); if(e.stopPropagation) e.stopPropagation();
+  Snd.play('ui'); Royale.tricks.pick(k);
+}
+function tricksCard(on){
+  if(S.card===on) return; S.card=on; S.cardT=on?TRICK_PICK_T:0;
+  var el=Royale.mount('royaleTrick',on?tricksCardHtml():'',TRICK_CSS);
+  if(el&&S.cardEl!==el){ S.cardEl=el; if(el.addEventListener) el.addEventListener('click',tricksCardTap); }
+}
+
+/* ---- the chip (draw('hud')): the crate and TAP A RIVAL while unaimed; the target's name, briefly, once sent ---- */
+function tricksHudBottom(){ // where the HUD rows end, as the strip and the ring pill read it (lane F, lane C), never per frame from the page
+  if(S.hudAt!==undefined&&G.t-S.hudAt<0.5&&G.t>=S.hudAt) return S.hudY; S.hudAt=G.t;
+  var b=0, ids=['floorline','slotRow','chips'], i;
+  try{ for(i=0;i<ids.length;i++){ var el=$(ids[i]), r=el&&el.getBoundingClientRect?el.getBoundingClientRect():null; if(r&&r.height>0&&r.bottom>b&&r.bottom<H*0.45) b=r.bottom; } }catch(e){}
+  if(!(b>0)){ var ct=0; try{ ct=parseInt(document.documentElement.style.getPropertyValue('--chrome-top'),10)||0; }catch(e){} b=84+ct; }
+  S.hudY=b; return b;
+}
+function tricksChip(){
+  var me=G.me, tr=me&&me.alive?me.trick:null, txt='', icon='trick', kind='';
+  if(S.nameT>0&&S.name){ txt='SENT TO '+S.name.toUpperCase(); kind=S.nameKind; }
+  else if(tr&&tr.kind&&!tr.target){ txt='TAP A RIVAL'; kind=tr.kind; }
+  else if(tr&&tr.kind&&tr.target){ var Q=playerById(tr.target); txt='→ '+(Q?Q.name.toUpperCase():''); kind=tr.kind; }
+  if(!txt) return;
+  ctx.save(); ctx.font='400 18px Bangers, Impact, sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle';
+  if(S.chip!==txt){ S.chip=txt; S.chipW=Math.ceil(ctx.measureText(txt).width||100); }
+  var h=34, w=S.chipW+64, x=Math.round(W/2-w/2), y=Math.round(Math.min(H*0.4,tricksHudBottom()+40)), pulse=!calm()&&txt==='TAP A RIVAL'?0.5+0.5*Math.sin(G.t*6):0;
+  ctx.fillStyle='rgba(15,13,20,.86)'; ctx.strokeStyle=pulse?'rgba(143,209,79,'+(0.55+0.45*pulse)+')':'#8fd14f'; ctx.lineWidth=2; rr(x,y,w,h,h/2); ctx.fill(); ctx.stroke();
+  Art.draw(icon,x+20,y+h/2,26); if(kind) Art.draw(TRICK_INFO[kind].icon,x+31,y+h/2+8,15);
+  ctx.fillStyle='#efe7d2'; ctx.fillText(txt,x+44,y+h/2+1);
+  ctx.restore();
+}
+
+/* ---- the crates in the world (draw('over')), bobbing like the hearts ---- */
+function tricksDrawCrate(id,x,y,fade){
+  var ph=id*1.7, bob=calm()?0:Math.sin(G.t*3+ph)*3;
+  ctx.save(); ctx.globalCompositeOperation='lighter'; lightPool(x,y,54,'255,198,90',0.26+0.08*Math.sin(G.t*4+ph)); ctx.restore();
+  ctx.globalAlpha=fade; Art.draw('trick',x,y+bob,36); ctx.globalAlpha=1;
+}
+function tricksDrawOver(){
+  var cx=G.cam.x, cy=G.cam.y, mx=W/2+60, my=H/2+60, i;
+  if(G.match.host){ for(i=0;i<S.crates.length;i++){ var c=S.crates[i]; if(Math.abs(c.x-cx)>mx||Math.abs(c.y-cy)>my) continue; tricksDrawCrate(c.id,c.x,c.y,c.t>TRICK_LIFE-8?0.55+0.45*Math.sin(G.t*12):1); } }
+  else for(i=0;i+2<S.gc.length;i+=3){ if(Math.abs(S.gc[i+1]-cx)>mx||Math.abs(S.gc[i+2]-cy)>my) continue; tricksDrawCrate(S.gc[i],S.gc[i+1],S.gc[i+2],1); }
+}
+
+/* ---- the aim: a tap on a rival's edge arrow or name tag, caught before the joystick sees it ---- */
+function tricksTap(sx,sy){
+  var M=G&&G.match, me=M&&G.me; if(!me||state!=='play'||M.phase!=='play'||!me.alive) return false;
+  var tr=me.trick; if(!tr||!tr.kind||tr.target) return false;
+  var id=Royale.ui&&Royale.ui.hit?Royale.ui.hit(sx,sy):0; if(!id||id===me.id) return false;
+  Royale.tricks.aim(id); return true;
+}
+function tricksPointer(e){
+  try{ var r=canvas.getBoundingClientRect?canvas.getBoundingClientRect():null, sx=e.clientX-(r?r.left:0), sy=e.clientY-(r?r.top:0);
+    if(tricksTap(sx,sy)){ if(e.stopPropagation) e.stopPropagation(); if(e.preventDefault) e.preventDefault(); } }catch(err){}
+}
+if(typeof document!=='undefined'&&document.addEventListener) document.addEventListener('pointerdown',tricksPointer,true);
+
+Royale.tricks={
+  KINDS:TRICK_KINDS, INFO:TRICK_INFO, FROM:TRICK_FROM, EVERY:TRICK_EVERY, MAX:TRICK_MAX, LIFE:TRICK_LIFE, HOLD:TRICK_HOLD, PICK_T:TRICK_PICK_T,
+  update:function(dt){
+    var M=G.match; if(!M) return; tricksSync();
+    if(M.host&&M.phase==='play') tricksHost(dt);
+    if(!M.host) tricksFires(dt);
+    var me=G.me, tr=me&&me.trick;
+    if(S.card){ S.cardT-=dt; if(S.cardT<=0||!tr||tr.kind||!me.alive||M.phase!=='play') tricksCard(false); } // the host rolls at 8 s; the card goes either way
+    if(S.aimT>0){ S.aimT-=dt; if(S.aimT<=0&&tr&&tr.target) tr.target=0; } // a refused aim (the target died first): tap again
+    if(S.nameT>0) S.nameT-=dt;
+  },
+  draw:function(layer){ if(!G.match) return; tricksSync(); if(layer==='over') tricksDrawOver(); else if(layer==='hud'&&G.match.phase==='play') tricksChip(); },
+  onMsg:tricksMsg,
+  /* The holder's choices: the host decides its own at once; a guest shows it and sends it up. */
+  pick:function(k){ var me=G.me, M=G.match; k=tricksKind(k); if(!M||!me||!k||!me.trick||me.trick.kind) return false;
+    if(M.host) return tricksMsg(me,{a:'pick',k:k});
+    me.trick.kind=k; tricksCard(false); return !!(Royale.net&&Royale.net.sendLane&&Royale.net.sendLane('tricks',{a:'pick',k:k})); },
+  aim:function(id){ var me=G.me, M=G.match, tr=me&&me.trick; if(!M||!tr||!tr.kind||tr.target) return false;
+    if(M.host) return tricksMsg(me,{a:'aim',id:id});
+    tr.target=id; S.aimT=TRICK_AIM_WAIT; Snd.play('ui'); return !!(Royale.net&&Royale.net.sendLane&&Royale.net.sendLane('tricks',{a:'aim',id:id})); },
+  tap:tricksTap, earn:tricksEarn,
+  /* §6.5: the crates near this guest's head, [id,x,y,…]; an empty list clears the guest's copy. */
+  pack:function(Pg){ var M=G.match; if(!M||!M.host||!Pg) return null; tricksSync(); var hd=headOf(Pg), out=[], i;
+    for(i=0;i<S.crates.length;i++){ var c=S.crates[i], dx=c.x-hd.x, dy=c.y-hd.y; if(dx*dx+dy*dy<=TRICK_SEND*TRICK_SEND) out.push(c.id,c.x,c.y); }
+    return out; },
+  unpack:function(v){ if(!G.match||G.match.host) return; tricksSync(); if(!Array.isArray(v)) return; var gc=S.gc, i; gc.length=0;
+    for(i=0;i+2<v.length&&gc.length<3*24;i+=3) if(tricksNum(v[i])&&tricksNum(v[i+1])&&tricksNum(v[i+2])) gc.push(v[i],v[i+1],v[i+2]); },
+  onEvent:function(ev){ if(!G.match||G.match.host) return; tricksSync(); if(tricksEventOk(ev)) tricksPresent(ev); },
+  /* A death drops a held trick, on every device (a guest hears it through net's death mirror). */
+  onDeath:function(P){ if(!G.match) return; tricksSync(); if(P) P.trick=null; if(P===G.me){ tricksCard(false); S.aimT=0; } },
+  onMatchEnd:function(){ tricksCard(false); },
+  teardown:function(){ tricksCard(false); tricksDropFires(); var el=S.cardEl; S=tricksFresh(); S.cardEl=el; },
+  /* for the sim and the reviewers */
+  crates:function(){ return G.match&&G.match.host?S.crates:S.gc; }, spotOk:tricksSpotOk, spawn:tricksSpawnCrate, cardOn:function(){ return S.card; },
+  _s:function(){ return S; }
+};
+})();
 /* ---------- Parade Royale: ui (lane F; ROYALE.md §2, §4, §6.2; docs/royale/briefs/F-show.md) ---------- */
 /* The show: a name tag over every rival, the crown over the biggest horde, a red marker over your nemesis in a REVENGE
    match, edge arrows to the two nearest rivals off screen, one match strip, the death stamp and banner, the end screen
@@ -10693,11 +11117,11 @@ var UI_STATS=[['peak','horde'],['eaten','eaten'],['bites','bites'],['survived','
 /* File-local state, reset whenever G.match is a new object. uiPair[by][of] = {first: match clock of the first zombie by took
    off of, n: bites seen (frames in which that count grew), v: the last count}: the host-side fallback for the tie-break and
    line 4 when the end result carries no firstBite / bitesOn. uiEnd: the end screen already up for this match. */
-var uiMatch=null, uiPair={}, uiDeath=null, uiResult=null, uiEnd=null, uiArrows=[], uiStrip='', uiStripN=-1, uiStripS=-1, uiHudY=0, uiHudAt=-9;
+var uiMatch=null, uiPair={}, uiDeath=null, uiResult=null, uiEnd=null, uiArrows=[], uiStrip='', uiStripN=-1, uiStripS=-1, uiStripK=-1, uiHudY=0, uiHudAt=-9;
 
 function uiSync(){
   var M=G&&G.match; if(M===uiMatch) return;
-  uiMatch=M; uiPair={}; uiDeath=null; uiResult=null; uiEnd=null; uiHudAt=-9; uiStrip=''; uiStripN=-1; uiStripS=-1; uiArrows.length=0; uiHideEnd();
+  uiMatch=M; uiResetShow(); uiPair={}; uiDeath=null; uiResult=null; uiEnd=null; uiHudAt=-9; uiStrip=''; uiStripN=-1; uiStripS=-1; uiArrows.length=0; uiHideEnd();
 }
 function uiEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function uiFill(t,o){ return t.replace(/\{(n|x|p)\}/g,function(m,k){ return String(o[k]); }); } // a function, so no name is read as a $-pattern
@@ -10837,10 +11261,13 @@ function uiDrawHud(){
   for(var i=0;i<list.length;i++){ var P=list[i]; uiArrow(P,M.crown&&P.id===M.crown,M.revenge&&P.id===M.revenge); }
   var n=0, ps=G.players||[]; for(i=0;i<ps.length;i++) if(ps[i].alive) n++;
   var left=Math.max(0,Math.ceil((M.length||0)-(M.clock||0)));
-  if(n!==uiStripN||left!==uiStripS){ uiStripN=n; uiStripS=left; uiStrip=n+' alive · '+fmt(left); }
+  var kills=G.me?(uiKillN[G.me.id]||0):0;
+  if(n!==uiStripN||left!==uiStripS||kills!==uiStripK){ uiStripN=n; uiStripS=left; uiStripK=kills; uiStrip=n+' alive · '+fmt(left)+(kills>0?' · '+kills:''); }
   var y=Math.min(H*0.35,uiHudBottom()+14);
   ctx.font='800 13px Rubik,system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.75)'; ctx.strokeText(uiStrip,W/2,y); ctx.fillStyle='#efe7d2'; ctx.fillText(uiStrip,W/2,y);
+  var sx=W/2+(kills>0?-9:0); // your takedowns: a count after the clock with the bite badge beside it
+  ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.75)'; ctx.strokeText(uiStrip,sx,y); ctx.fillStyle='#efe7d2'; ctx.fillText(uiStrip,sx,y);
+  if(kills>0) Art.draw('bite',sx+ctx.measureText(uiStrip).width/2+11,y,18);
 }
 
 /* ----- the end screen ----- */
@@ -10916,12 +11343,138 @@ function uiShowEnd(result){
 }
 function uiHideEnd(){ var el=$('royaleEnd'); if(el&&el.innerHTML) el.innerHTML=''; } // uiEnd stays set: this match's end is not shown again
 
+/* ----- who is who, and kills that land (owner, 21 Oct: "destroying another player doesn't feel good") ----- */
+/* The aura: every horde stands on a soft disc in its player's colour, one path and one fill per player, and the head on a
+   glow and a ring, so two crossing lines never mix. A kill flares it for UI_FLARE_T. A takedown: a shockwave and a burst
+   in the victim's colour for everyone, a line in the kill feed, a banner for the big beats; on the killer's phone a
+   stamp, the takedown sound, a shake, a buzz and a flash. Presentation only: jrand and the juice helpers, never mrand.
+   Every device sees the same deaths in the same order (NET_MUST.death), so the streaks agree. */
+var UI_FLARE_T=1.5, UI_STREAK_T=12, UI_FEED_T=5, UI_FEED_N=3, UI_WAVE_T=0.6, UI_FLASH_T=0.3;
+var UI_STREAK=['DEVOURED','DEVOURED','DOUBLE','TRIPLE','MASSACRE'];
+var UI_FEED_VERB={eaten:'flattened',horde:'had the last of',ghost:'haunted'}, UI_FEED_ATE='ate';
+var UI_FEED_SOLO={ring:'burned.',people:'was put down.',hazard:'stepped wrong.',hunter:'camped too long.',car:'was run over.',quit:'left.'}, UI_FEED_GONE='went down.';
+var UI_LEFT={3:'Three hordes left.',2:'Last two.'};
+var uiFeed=[], uiWaves=[], uiFlash=null, uiKillLog={}, uiKillN={}, uiBlood=false, uiLastKill=null;
+function uiResetShow(){ uiFeed.length=0; uiWaves.length=0; uiFlash=null; uiKillLog={}; uiKillN={}; uiBlood=false; uiLastKill=null; uiStreakNet={}; uiBounces.length=0; uiBounceSeq=0; uiBounceSeen=0; }
+function uiSegsOf(P){ return P===G.cur?G.segs:P.segs; }
+function uiDrawAura(){
+  var ps=G.players||[], cx=G.cam.x, cy=G.cam.y, mx=W/2+80, my=H/2+80, i, k;
+  for(i=0;i<ps.length;i++){ var P=ps[i]; if(!P.alive) continue;
+    var segs=uiSegsOf(P)||[], hd=headOf(P), col=uiCol(P), fl=Math.max(0,P.flareT||0)/UI_FLARE_T, r=SEG_R+7+fl*4, any=false;
+    ctx.fillStyle=col; ctx.globalAlpha=0.36+0.2*fl; ctx.beginPath();
+    for(k=0;k<segs.length;k++){ var s=segs[k]; if(Math.abs(s.x-cx)>mx||Math.abs(s.y-cy)>my) continue; ctx.moveTo(s.x+r,s.y); ctx.arc(s.x,s.y,r,0,TAU); any=true; }
+    if(any) ctx.fill();
+    if(Math.abs(hd.x-cx)>mx||Math.abs(hd.y-cy)>my) continue;
+    ctx.globalAlpha=0.3+0.3*fl; ctx.beginPath(); ctx.arc(hd.x,hd.y,hd.r*(2.1+fl*1.3),0,TAU); ctx.fill();
+    ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=3+3*fl; ctx.beginPath(); ctx.arc(hd.x,hd.y,hd.r+6+fl*8,0,TAU); ctx.stroke();
+    var sl=uiStreakOf(P); if(sl>0) uiDrawStreak(P,hd,col,sl); }
+  ctx.globalAlpha=1;
+}
+function uiDrawWaves(){
+  for(var i=0;i<uiWaves.length;i++){ var w=uiWaves[i], u=Math.min(1,w.t/UI_WAVE_T), e=1-(1-u)*(1-u);
+    if(w.small){ ctx.globalAlpha=1-u; ctx.strokeStyle=w.col; ctx.lineWidth=3*(1-u)+1; ctx.beginPath(); ctx.arc(w.x,w.y,4+26*e,0,TAU); ctx.stroke(); continue; } // a bounce: a ping, not a takedown
+    ctx.globalAlpha=1-u; ctx.strokeStyle=w.col; ctx.lineWidth=10*(1-u)+1; ctx.beginPath(); ctx.arc(w.x,w.y,24+230*e,0,TAU); ctx.stroke();
+    ctx.globalAlpha=(1-u)*0.6; ctx.strokeStyle='#fff6df'; ctx.lineWidth=3*(1-u)+0.5; ctx.beginPath(); ctx.arc(w.x,w.y,14+150*e,0,TAU); ctx.stroke(); }
+  ctx.globalAlpha=1;
+}
+function uiFeedPush(P,cause,K){
+  uiFeed.push(K?{a:K,verb:UI_FEED_VERB[cause]||UI_FEED_ATE,b:P,t:0}:{a:P,verb:UI_FEED_SOLO[cause]||UI_FEED_GONE,b:null,t:0});
+  while(uiFeed.length>UI_FEED_N) uiFeed.shift();
+}
+function uiDrawFeed(){
+  if(!uiFeed.length) return;
+  var x1=W-12, y=Math.min(H*0.4,uiHudBottom()+58), i, j; // under the ring's timer pill
+  ctx.font='800 12px Rubik,system-ui,sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left'; ctx.lineWidth=3; ctx.strokeStyle='rgba(15,13,20,.85)';
+  for(i=uiFeed.length-1;i>=0;i--){ var f=uiFeed[i], al=Math.max(0,Math.min(1,(UI_FEED_T-f.t)/0.8)); if(al<=0) continue;
+    var parts=f.b?[[f.a.name,uiCol(f.a)],[' '+f.verb+' ','#efe7d2'],[f.b.name,uiCol(f.b)],['.','#efe7d2']]:[[f.a.name,uiCol(f.a)],[' '+f.verb,'#efe7d2']], w=0;
+    for(j=0;j<parts.length;j++) w+=ctx.measureText(parts[j][0]).width;
+    var x=x1-w; ctx.globalAlpha=al;
+    for(j=0;j<parts.length;j++){ ctx.strokeText(parts[j][0],x,y); ctx.fillStyle=parts[j][1]; ctx.fillText(parts[j][0],x,y); x+=ctx.measureText(parts[j][0]).width; }
+    y+=18; }
+  ctx.globalAlpha=1;
+}
+function uiDrawFlash(){ if(!uiFlash) return; var u=uiFlash.t/UI_FLASH_T; if(u>=1) return; ctx.globalAlpha=0.3*(1-u); ctx.fillStyle=uiFlash.col; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1; }
+function uiTick(dt){
+  var i, ps=G.players||[];
+  for(i=0;i<ps.length;i++) if(ps[i].flareT>0) ps[i].flareT=Math.max(0,ps[i].flareT-dt);
+  for(i=uiWaves.length-1;i>=0;i--){ uiWaves[i].t+=dt; if(uiWaves[i].t>=UI_WAVE_T) uiWaves.splice(i,1); }
+  for(i=uiBounces.length-1;i>=0;i--){ uiBounces[i].t+=dt; if(uiBounces[i].t>=UI_BOUNCE_T) uiBounces.splice(i,1); }
+  for(i=uiFeed.length-1;i>=0;i--){ uiFeed[i].t+=dt; if(uiFeed[i].t>=UI_FEED_T) uiFeed.splice(i,1); }
+  if(uiFlash){ uiFlash.t+=dt; if(uiFlash.t>=UI_FLASH_T) uiFlash=null; }
+}
+function uiAliveN(){ var n=0, ps=G.players||[]; for(var i=0;i<ps.length;i++) if(ps[i].alive) n++; return n; }
+/* Everyone: the wave, the burst, the feed. The killer: the stamp and the rest. Returns what was shown (for the sim). */
+function uiTakedown(P,cause,by){
+  var M=G.match, hd=headOf(P), col=uiCol(P), K=by&&by!==P.id?uiPlayer(by):null, t=M.clock||0, left=uiAliveN();
+  uiWaves.push({x:hd.x,y:hd.y,col:col,t:0}); if(uiWaves.length>6) uiWaves.shift();
+  if(Math.abs(hd.x-G.cam.x)<W&&Math.abs(hd.y-G.cam.y)<H) fxParts(hd.x,hd.y,20,[col,'#fff6df','#b3202b'],1.4);
+  uiFeedPush(P,cause,K);
+  if(!K){ if(P!==G.me&&UI_LEFT[left]) banner(UI_LEFT[left]); Snd.play('takedown',hd.x,hd.y,0); return (uiLastKill={word:null,tier:0,K:null,n:0}); }
+  var log=uiKillLog[K.id]||(uiKillLog[K.id]=[]); log.push(t); while(log.length&&t-log[0]>UI_STREAK_T) log.shift();
+  uiKillN[K.id]=(uiKillN[K.id]||0)+1; K.flareT=UI_FLARE_T;
+  var first=!uiBlood, crown=!!(M.crown&&M.crown===P.id), rev=K===G.me&&!!M.revenge&&M.revenge===P.id, n=log.length; uiBlood=true;
+  var word=crown?'SHUTDOWN':rev?'REVENGE':n>=2?UI_STREAK[Math.min(4,n)]:first?'FIRST BLOOD':UI_STREAK[1];
+  var tier=Math.min(5,2+n+(crown||rev||first?1:0));
+  if(K===G.me){ var was=G.cur; bindPlayer(G.me); stamp(word,tier,G.head.x,G.head.y); if(was) bindPlayer(was);
+    Snd.play('takedown',hd.x,hd.y,tier); shakeTo(8+tier*2); Haptic.tap(45); if(!calm()) uiFlash={col:col,t:0}; }
+  else { Snd.play('takedown',hd.x,hd.y,0);
+    if(P!==G.me){ if(crown) banner(K.name+' took the crown off '+P.name+'.'); else if(first) banner('First blood: '+K.name+'.'); else if(UI_LEFT[left]) banner(UI_LEFT[left]); } }
+  return (uiLastKill={word:word,tier:tier,K:K,n:n});
+}
+
+/* ----- the streak aura (owner, 22 Oct): rings radiating off a streaking head, sparks where a bullet bounces ----- */
+/* Host: each player's own streakT and kick (the bound one in G). Guest: its own head from its prediction, rivals from the
+   lane's packed value (uiStreakNet, trusted for UI_STREAK_NET s). Bounces travel as [seq,x,y,angle×100,player id]. */
+var UI_STREAK_NET=0.35, UI_BOUNCE_T=0.6, UI_BOUNCE_R=1500;
+var uiStreakNet={}, uiBounces=[], uiBounceSeq=0, uiBounceSeen=0;
+function uiStreakOf(P){ // 0 = off; else 0.01..1, how hard the aura is running
+  var M=G.match, own=P===G.cur?G:P;
+  if(M.host||P===G.me){ var t=own.streakT||0, k=own.eatKick||0; if(!(t>0)) return 0; return Math.max(0.01,Math.min(1,(k-STREAK_ON)/(ROYALE_KICK_MAX-STREAK_ON))); }
+  var n=uiStreakNet[P.id]; return n&&G.t-n.at<UI_STREAK_NET?n.l:0;
+}
+function uiDrawStreak(P,hd,col,s){
+  var ph=calm()?0:(G.t*2.2)%1, i, r0=hd.r+10+8*s;
+  ctx.strokeStyle=col;
+  for(i=0;i<3;i++){ var u=(ph+i/3)%1; ctx.globalAlpha=(1-u)*(0.55+0.35*s); ctx.lineWidth=3*(1-u)+1; ctx.beginPath(); ctx.arc(hd.x,hd.y,r0+u*(26+20*s),0,TAU); ctx.stroke(); }
+  ctx.globalAlpha=0.5+0.3*s; ctx.lineWidth=2; ctx.setLineDash([6,5]); ctx.lineDashOffset=-G.t*60; ctx.beginPath(); ctx.arc(hd.x,hd.y,r0,0,TAU); ctx.stroke(); ctx.setLineDash([]);
+  var segs=uiSegsOf(P)||[], n=Math.min(STREAK_FRONT,segs.length); ctx.globalAlpha=0.35+0.3*s; ctx.lineWidth=2;
+  for(i=0;i<n;i++){ var sg=segs[i]; ctx.beginPath(); ctx.arc(sg.x,sg.y,SEG_R+5,0,TAU); ctx.stroke(); }
+  ctx.globalAlpha=1;
+}
+/* Host: a bullet bounced off P's aura (core's streakBounce). Shown here at once and sent to the guests near it. */
+function uiBounce(P,x,y,a){
+  uiBounces.push({seq:++uiBounceSeq,x:Math.round(x),y:Math.round(y),a:a,id:P.id,t:0}); if(uiBounces.length>16) uiBounces.shift();
+  uiBounceFx(P,x,y,a);
+}
+function uiBounceFx(P,x,y,a){
+  if(Math.abs(x-G.cam.x)>W||Math.abs(y-G.cam.y)>H) return;
+  var col=uiCol(P); fxSpray(x,y,a,0.9,6,[col,'#ffffff','#ffe066'],1.1);
+  uiWaves.push({x:x,y:y,col:col,t:0,small:true}); if(uiWaves.length>10) uiWaves.shift();
+  Snd.play('ricochet',x,y);
+}
+function uiPack(Pg){
+  var M=G.match; if(!M||!M.host||!Pg) return null; var ps=G.players||[], s=[], b=[], hd=headOf(Pg), i;
+  for(i=0;i<ps.length;i++){ var P=ps[i]; if(!P.alive) continue; var l=uiStreakOf(P); if(l>0) s.push(P.id,Math.max(1,Math.round(l*10))); }
+  for(i=0;i<uiBounces.length;i++){ var e=uiBounces[i]; if(Math.abs(e.x-hd.x)<UI_BOUNCE_R&&Math.abs(e.y-hd.y)<UI_BOUNCE_R) b.push(e.seq,e.x,e.y,Math.round(e.a*100),e.id); }
+  return s.length||b.length?{s:s,b:b}:null;
+}
+function uiUnpack(v){
+  var M=G.match; if(!M||M.host) return; uiSync(); if(!v||typeof v!=='object') return; var i, s=Array.isArray(v.s)?v.s:[], b=Array.isArray(v.b)?v.b:[];
+  for(i=0;i+1<s.length&&i<48;i+=2){ var id=s[i], l=s[i+1]; if(typeof id==='number'&&typeof l==='number'&&isFinite(l)) uiStreakNet[id]={l:Math.max(0.01,Math.min(1,l/10)),at:G.t}; }
+  var top=uiBounceSeen;
+  for(i=0;i+4<b.length&&i<16*5;i+=5){ var q=b[i]; if(typeof q!=='number'||!(q>uiBounceSeen)) continue; var P=uiPlayer(b[i+4]); if(P&&isFinite(b[i+1])&&isFinite(b[i+2])&&isFinite(b[i+3])) uiBounceFx(P,b[i+1],b[i+2],b[i+3]/100); if(q>top) top=q; }
+  uiBounceSeen=top;
+}
+
 Royale.ui={
-  update:function(dt){ uiSync(); if(G.match.phase==='play') uiWatch(); },
-  draw:function(layer){ uiSync(); if(layer==='over') uiDrawOver(); else if(layer==='hud') uiDrawHud(); },
+  update:function(dt){ uiSync(); uiTick(dt||0); if(G.match.phase==='play') uiWatch(); },
+  draw:function(layer){ uiSync();
+    if(layer==='ground') uiDrawAura();
+    else if(layer==='over'){ uiDrawWaves(); uiDrawOver(); }
+    else if(layer==='hud'){ uiDrawFlash(); uiDrawHud(); if(G.match.phase==='play') uiDrawFeed(); } },
   /* P died. Only this device's own death is shown: one stamp for the cause and, if a player did it, one banner naming them. */
   onDeath:function(P,cause,by){
-    uiSync(); if(P!==G.me) return;
+    uiSync(); var shown=uiTakedown(P,cause,by); if(P!==G.me) return shown;
     var M=G.match; uiDeath={P:P,cause:cause,by:by||0,last:!!(M.ring&&M.ring.tr<=0)};
     var word=UI_DEATH[cause]; if(word){ var was=G.cur; bindPlayer(P); stamp(word,2,G.head.x,G.head.y); if(was) bindPlayer(was); }
     var K=by&&by!==P.id?uiPlayer(by):null;
@@ -10930,7 +11483,22 @@ Royale.ui={
   /* Once per match: a guest can hear `end` twice (an `e` message and a snapshot); the second changes nothing (same line, no
      second write of horde_royale_nem, no restarted count). */
   onMatchEnd:function(result){ uiSync(); if(uiEnd) return uiEnd; uiResult=result||{}; uiEnd=uiShowEnd(uiResult); return uiEnd; },
+  /* Which rival a screen point (CSS px) is on: the id of the living rival whose edge arrow is within 32 px or whose name
+     tag is within 40 px, the nearest if several, else 0. Same placement as uiArrow and uiDrawOver (lane I aims with it). */
+  hit:function(sx,sy){
+    var M=G&&G.match; if(!M||!G.cam||!G.me||(M.phase!=='play'&&M.phase!=='drop')) return 0; uiSync();
+    var best=0, bd=1e9, list=uiPickArrows(), cx=W/2, cy=H/2, ps=G.players||[], i, d;
+    for(i=0;i<list.length;i++){ var P=list[i], dx=P.head.x-G.cam.x+W/2-cx, dy=P.head.y-G.cam.y+H/2-cy, s=1;
+      if(dx>0) s=Math.min(s,(W-44-cx)/dx); if(dx<0) s=Math.min(s,(44-cx)/dx);
+      if(dy>0) s=Math.min(s,(H-64-cy)/dy); if(dy<0) s=Math.min(s,(Math.max(130,uiHudBottom()+48)-cy)/dy);
+      d=Math.hypot(sx-(cx+dx*s),sy-(cy+dy*s)); if(d<=32&&d<bd){ bd=d; best=P.id; } }
+    for(i=0;i<ps.length;i++){ var Q=ps[i], hd=Q.head; if(Q===G.me||!Q.alive||Math.abs(hd.x-G.cam.x)>W/2+90||Math.abs(hd.y-G.cam.y)>H/2+90) continue;
+      var ty=hd.y-hd.r-10-(M.crown&&Q.id===M.crown?17:0); d=Math.hypot(sx-(hd.x-G.cam.x+W/2),sy-(ty-G.cam.y+H/2)); if(d<=40&&d<bd){ bd=d; best=Q.id; } }
+    return best;
+  },
   /* for the sim and the reviewers */
+  bounce:uiBounce, pack:uiPack, unpack:uiUnpack, streak:uiStreakOf,
+  takedown:uiTakedown, last:function(){ return uiLastKill; }, feed:function(){ return uiFeed; }, kills:function(id){ return uiKillN[id]||0; }, waves:function(){ return uiWaves; }, aura:uiDrawAura,
   nemesis:uiNemesis, nemesisLine:uiNemLine, bestStat:uiBestStat, arrows:uiPickArrows, endHtml:uiEndHtml, hide:uiHideEnd,
   pairs:function(){ return uiPair; }, lines:UI_NEM, none:UI_NEM_NONE
 };
@@ -11027,6 +11595,7 @@ $('card').addEventListener('pointerdown',function(e){ if(e.target.closest('butto
 function setMuteBtn(){ $('mute').className=Snd.isMuted()?'off':''; }
 $('mute').addEventListener('click',function(){ Snd.init(); Snd.toggleMute(); setMuteBtn(); });
 setMuteBtn();
+$('howto').addEventListener('click',function(e){ var c=e.target&&e.target.closest?e.target.closest('.hcard'):null; if(!c) return; var on=!c.classList.contains('open'); c.classList.toggle('open',on); c.setAttribute('aria-expanded',on?'true':'false'); Snd.play('ui'); }); // a card shows its detail
 $('btnHow').addEventListener('click',function(){ var h=$('howto'), open=h.classList.toggle('hidden'); this.textContent=open?'HOW TO PLAY':'HIDE'; this.setAttribute('aria-expanded',open?'false':'true'); Snd.play('ui'); });
 window.addEventListener('keydown',function(e){
   var k=e.key.toLowerCase();
@@ -11078,7 +11647,8 @@ function openSoundboard(){
     ['Coin chain',[['chain x12','chain'],['one coin','coin'],['stray','stray']]],
     ['Stings',[['1 DOUBLE','sting1'],['2 TRIPLE','sting2'],['3 BUFFET','sting3'],['4 bounty','sting4'],['5 the ladder','sting5'],['brain','brain'],['BRAAAM (100)','braaam'],['fever (200)','fever'],['stairs','stairs'],['floor','floor'],['victory','victory'],['count tick','tick']]],
     ['Power motifs',Object.keys({sprint:1,beefy:1,clout:1,profit:1,shield:1,fire:1,electric:1,roar:1,undo:1}).map(function(id){ return [id,'m:'+id]; })],
-    ['Power procs',[['adrenaline','adren'],['deflector','ricochet'],['veteran','absorb'],['iron jaw','tink'],['riot shield','shieldthud'],['beefy gulp','gulp'],['shockwave','shock'],['frenzy lunge','lunge'],['brute shove','shove'],['furniture scrape','scrape'],['brute smash','smash'],['fire crackle','crackle'],['bile splat','splat'],['electric arc','arc'],['wind-up','windup']]]];
+    ['Power procs',[['adrenaline','adren'],['deflector','ricochet'],['veteran','absorb'],['iron jaw','tink'],['riot shield','shieldthud'],['beefy gulp','gulp'],['shockwave','shock'],['frenzy lunge','lunge'],['brute shove','shove'],['furniture scrape','scrape'],['brute smash','smash'],['fire crackle','crackle'],['bile splat','splat'],['electric arc','arc'],['wind-up','windup']]],
+    ['Parade Royale',[['takedown (yours)','td:4'],['takedown (theirs)','td:0']]]];
   var html='<h2 style="font:28px Bangers,Impact,sans-serif;letter-spacing:2px;margin:0 0 6px">PARADE OF THE DEAD SOUNDBOARD</h2><div style="opacity:.7;margin-bottom:10px">Tap to hear. Music + mob size below.</div>';
   groups.forEach(function(g){ html+='<div style="margin:12px 0 4px;font-weight:800">'+g[0]+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">'; g[1].forEach(function(b){ html+='<button data-s="'+b[1]+'" style="font:700 12px Rubik,system-ui,sans-serif;padding:8px 10px;border:2px solid #efe7d2;background:#2b2733;color:#efe7d2;border-radius:4px">'+b[0]+'</button>'; }); html+='</div>'; });
   html+='<div style="margin:16px 0 4px;font-weight:800">Music and mob size</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+['office','gym','lab','streets'].map(function(k){ return '<button data-song="'+k+'" style="font:700 12px Rubik,system-ui,sans-serif;padding:8px 10px;border:2px solid #a9df57;background:#2b2733;color:#a9df57;border-radius:4px">'+k+'</button>'; }).join('')+'<button data-song="stop" style="font:700 12px Rubik,system-ui,sans-serif;padding:8px 10px;border:2px solid #ff5a66;background:#2b2733;color:#ff5a66;border-radius:4px">stop</button></div>';
@@ -11096,6 +11666,7 @@ function openSoundboard(){
     if(k==='coin'){ Snd.capture(who,'bite',0); return; } if(k==='stray'){ Snd.capture(who,'stray',0); return; }
     if(/^sting/.test(k)){ Snd.play('sting',undefined,undefined,+k.slice(5)); return; }
     if(/^m:/.test(k)){ Snd.motif(k.slice(2),true); return; }
+    if(/^td:/.test(k)){ var tt=+k.slice(3); if(tt) Snd.play('sting',undefined,undefined,tt); Snd.play('takedown',G.head.x+(tt?0:300),G.head.y,tt); return; }
     Snd.play(k,G.head.x+(k==='arc'||k==='lunge'?120:0),G.head.y,k==='crackle'?6:(k==='tick'?3:undefined)); });
   $('sfxSize').addEventListener('input',function(e){ size=+e.target.value; feed(); });
   $('sfxWalk').addEventListener('change',function(e){ walk=e.target.checked; feed(); });
