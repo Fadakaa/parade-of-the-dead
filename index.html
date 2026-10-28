@@ -979,7 +979,10 @@ var Haptic=(function(){
   var last=-1e9;
   function tap(ms){ var n=performance.now(); if(n-last<60) return; last=n;
     var fn=typeof window!=='undefined'&&window.__haptic; try{ if(fn) fn(ms); else if(typeof navigator!=='undefined'&&navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
-  return {tap:tap};
+  /* A pattern (ms on, off, on…) where the device can; else the first buzz. Throttled like a tap. */
+  function pattern(arr){ var n=performance.now(); if(n-last<60) return; last=n;
+    var fn=typeof window!=='undefined'&&window.__haptic; try{ if(fn) fn(arr[0]); else if(typeof navigator!=='undefined'&&navigator.vibrate) navigator.vibrate(arr); }catch(e){} }
+  return {tap:tap,pattern:pattern};
 })();
 var Snd=(function(){
   var AC=null, master=null, sfxG=null, musG=null, voiceG=null, ambG=null, voiceBus=null, bedBus=null, noiseBuf=null, muted=false, pendingSong=null;
@@ -2939,7 +2942,7 @@ function updateMini(dt){
   var F=G.F, i;
   if(F.foam){ for(i=F.foam.length-1;i>=0;i--){ F.foam[i].t-=dt; if(F.foam[i].t<=0) F.foam.splice(i,1); } }
   if(G.match) forPlayers(function(P){ G.foamSlow=inFoam(G.head.x,G.head.y)?0.5:1; }); else G.foamSlow=inFoam(G.head.x,G.head.y)?0.5:1;
-  var ms=G.minis||[]; for(i=0;i<ms.length;i++){ G.mini=ms[i]; if(G.match){ if(ms[i].ghost&&!ms[i].dead){ Royale.ghostUpdate(ms[i],dt); continue; } var npm=nearestPlayer(ms[i].x,ms[i].y,true); if(npm) bindPlayer(npm); } updateOneMini(ms[i],dt); }
+  var ms=G.minis||[]; for(i=0;i<ms.length;i++){ G.mini=ms[i]; if(G.match){ if(ms[i].ghost&&!ms[i].dead){ Royale.ghostUpdate(ms[i],dt); continue; } var npm=null; if(ms[i].target&&ms[i].targetT>0){ ms[i].targetT-=dt; var tp=playerById(ms[i].target); if(tp&&tp.alive) npm=tp; } /* a trick's bosses hunt their target for a while (ROYALE.md §12) */ if(!npm) npm=nearestPlayer(ms[i].x,ms[i].y,true); if(npm) bindPlayer(npm); } updateOneMini(ms[i],dt); }
   if(G.match) bindPlayer(G.me);
   G.mini=focusMini();
 }
@@ -3407,7 +3410,7 @@ function updateSkills(dt){
     if(G.fireT<=0&&G.burnT<=0){ G.burnT=t>=3?4:3; G.fireT=[14,10,7][t-1]; Snd.play('ignite',hd.x,hd.y); addFloat(hd.x,hd.y-36,'IGNITE','#ff8c1a',15); G.lastFire.x=hd.x; G.lastFire.y=hd.y; }
     if(G.burnT>0){
       G.burnT-=dt;
-      if(Math.hypot(hd.x-G.lastFire.x,hd.y-G.lastFire.y)>=16){ G.lastFire.x=hd.x; G.lastFire.y=hd.y; F.hazards.push({kind:'fire',x:hd.x-Math.cos(hd.h)*hd.r*0.8,y:hd.y-Math.sin(hd.h)*hd.r*0.8,r:15,life:fireLife(),mine:true}); }
+      if(Math.hypot(hd.x-G.lastFire.x,hd.y-G.lastFire.y)>=16){ G.lastFire.x=hd.x; G.lastFire.y=hd.y; F.hazards.push({kind:'fire',x:hd.x-Math.cos(hd.h)*hd.r*0.8,y:hd.y-Math.sin(hd.h)*hd.r*0.8,r:15,life:fireLife(),mine:true,by:G.cur?G.cur.id:0}); }
       if(Math.random()<dt*20) spawnEmber({x:hd.x,y:hd.y,r:hd.r});
       if((G.crackleT=(G.crackleT||0)-dt)<=0){ G.crackleT=0.2; var nf=0; for(j=0;j<F.hazards.length&&nf<8;j++){ var fz=F.hazards[j]; if(fz.mine&&Math.abs(fz.x-hd.x)<220&&Math.abs(fz.y-hd.y)<220) nf++; } Snd.play('crackle',hd.x,hd.y,nf); } // the trail crackles while it is laid
     }
@@ -3420,7 +3423,8 @@ function updateSkills(dt){
       var best=null, bd=260;
       for(i=0;i<G.humans.length;i++){ var hv=G.humans[i]; if(hv.dead||hv.bileT>0) continue; var d=Math.hypot(hv.x-hd.x,hv.y-hd.y); if(d<bd&&Math.abs(angNorm(Math.atan2(hv.y-hd.y,hv.x-hd.x)-hd.h))<1.05){ bd=d; best=hv; } }
       var mb=G.mini; if(mb&&!mb.dead&&!(mb.slowT>0)){ var dmb=Math.hypot(mb.x-hd.x,mb.y-hd.y)-mb.r; if(dmb<bd&&Math.abs(angNorm(Math.atan2(mb.y-hd.y,mb.x-hd.x)-hd.h))<1.05){ bd=dmb; best=mb; } }
-      if(best){ var a=Math.atan2(best.y-hd.y,best.x-hd.x); G.proj.push({kind:'bile',x:hd.x+Math.cos(a)*hd.r,y:hd.y+Math.sin(a)*hd.r,vx:Math.cos(a)*300,vy:Math.sin(a)*300,life:1.0,splash:t>=3,dead:false}); G.vomT=[8,6,4.5][t-1]; G.chomp=0.3; Snd.play('vomit',hd.x,hd.y); addFloat(hd.x,hd.y-34,'BLEURGH','#8fd14f',13); }
+      if(G.match&&Royale.build&&Royale.build.bileTarget){ var bt=Royale.build.bileTarget(bd); if(bt){ bd=bt.d; best=bt.h; } } // a rival's head ahead, not yet slimed
+      if(best){ var a=Math.atan2(best.y-hd.y,best.x-hd.x); G.proj.push({kind:'bile',x:hd.x+Math.cos(a)*hd.r,y:hd.y+Math.sin(a)*hd.r,vx:Math.cos(a)*300,vy:Math.sin(a)*300,life:1.0,splash:t>=3,dead:false,by:G.cur?G.cur.id:0}); G.vomT=[8,6,4.5][t-1]; G.chomp=0.3; Snd.play('vomit',hd.x,hd.y); addFloat(hd.x,hd.y-34,'BLEURGH','#8fd14f',13); }
     }
   }
   t=sk('roar');
@@ -3433,6 +3437,7 @@ function updateSkills(dt){
       var hnR=G.hunter&&Math.hypot(G.hunter.x-hd.x,G.hunter.y-hd.y)<R+G.hunter.r;
       if(hnR){ hit++; slowHunter(G.hunter,0.5,1.5,true); }
       (G.minis||[]).forEach(function(mm){ if(!mm.dead&&Math.hypot(mm.x-hd.x,mm.y-hd.y)<R+mm.r){ hit++; slowHunter(mm,0.5,1.5,true); mm.awake=true; } });
+      if(G.match&&Royale.build&&Royale.build.roarRivals) hit+=Royale.build.roarRivals(R,t); // rival tails within R stand dazed, yours to take
       if(hit){ G.roarT=[12,9,6][t-1]; G.booms.push({x:hd.x,y:hd.y,r:R,t:0,roar:true}); G.shake=Math.max(G.shake,0.2); var wolf=skinId()==='werewolf'; Snd.play(wolf?'howl':'roar'); addFloat(hd.x,hd.y-40,wolf?'AWOOOO':'RAAAAH','#efe7d2',20); G.chomp=0.35; } else G.roarT=0.5;
     }
   }
@@ -3443,8 +3448,9 @@ function updateSkills(dt){
       var R2=[110,150,190][t-1], n=t>=3?2:1, cands=[];
       for(i=0;i<G.humans.length;i++){ var hz2=G.humans[i]; if(hz2.dead) continue; var dz=Math.hypot(hz2.x-hd.x,hz2.y-hd.y); if(dz<R2) cands.push({h:hz2,d:dz}); }
       (G.minis||[]).forEach(function(mm){ if(mm.dead) return; var dmz=Math.hypot(mm.x-hd.x,mm.y-hd.y); if(dmz<R2+mm.r) cands.push({h:mm,d:dmz-mm.r}); });
+      if(G.match&&Royale.build&&Royale.build.zapCands) Royale.build.zapCands(cands,R2); // rival lines in reach
       cands.sort(function(a,b){return a.d-b.d;});
-      for(j=0;j<Math.min(n,cands.length);j++){ var zh=cands[j].h; if(zh.isMini){ hitMini(zh,[0,6,8,10][t]); slowHunter(zh,0.7,1,false); } else { Snd.group('zapped',zh.x,zh.y); zh.stunT=Math.max(zh.stunT,0.8); zh.burst=0; hitFx(zh,zh.x,zh.y,Math.atan2(zh.y-hd.y,zh.x-hd.x),['#8fd8ff','#ffffff']); } G.arcs.push(makeArc(hd.x,hd.y,zh.x,zh.y,t)); Snd.play('arc',zh.x,zh.y); spawnParts(zh.x,zh.y,[0,4,8,14][t],['#8fd8ff','#efe7d2','#ffffff']); }
+      for(j=0;j<Math.min(n,cands.length);j++){ var zh=cands[j].h; if(cands[j].rival){ Royale.build.zapHit(cands[j]); } else if(zh.isMini){ hitMini(zh,[0,6,8,10][t]); slowHunter(zh,0.7,1,false); } else { Snd.group('zapped',zh.x,zh.y); zh.stunT=Math.max(zh.stunT,0.8); zh.burst=0; hitFx(zh,zh.x,zh.y,Math.atan2(zh.y-hd.y,zh.x-hd.x),['#8fd8ff','#ffffff']); } G.arcs.push(makeArc(hd.x,hd.y,zh.x,zh.y,t)); Snd.play('arc',zh.x,zh.y); spawnParts(zh.x,zh.y,[0,4,8,14][t],['#8fd8ff','#efe7d2','#ffffff']); }
       if(cands.length&&t>=3){ G.flash=Math.max(G.flash,0.03); G.shake=Math.max(G.shake,0.06); }
       if(cands.length) Snd.play('zap',hd.x,hd.y);
       G.zapT=cands.length?[4,3,2][t-1]:0.4;
@@ -4104,7 +4110,7 @@ function citySpawnPoint(rmin,rmax,ang){
   var F=G.F, N=F.nav&&F.nav.nodes, hd=G.head, best=null, bs=1e9, vw=W/2+80, vh=H/2+80;
   if(!N) return null;
   for(var t=0;t<160;t++){ var n=N[Math.floor(Math.random()*N.length)], d=Math.hypot(n.x-hd.x,n.y-hd.y); if(d<rmin||d>rmax) continue;
-    if(Math.abs(n.x-G.cam.x)<vw&&Math.abs(n.y-G.cam.y)<vh) continue;
+    if(G.match?royaleSeen(n.x,n.y,vw,vh):(Math.abs(n.x-G.cam.x)<vw&&Math.abs(n.y-G.cam.y)<vh)) continue; // out of every head's sight in a match, not just the host's
     if(G.match&&royaleOutRing(n.x,n.y,ROYALE_RING_PEOPLE)) continue; // Parade Royale: people arrive inside the ring, where the hordes are
     var x=n.x+(Math.random()-0.5)*40, y=n.y+(Math.random()-0.5)*40; if(navBlocked(F,x,y,HUMAN_R+4,true)) continue;
     var sc=ang===undefined?Math.random():Math.abs(angNorm(Math.atan2(n.y-hd.y,n.x-hd.x)-ang)); if(sc<bs){ bs=sc; best={x:x,y:y}; } }
@@ -4130,12 +4136,12 @@ function updateCity(dt){
   if(m>G.cityMin){ for(var mm=G.cityMin+1;mm<=m;mm++) cityMinute(mm); G.cityMin=m; }
   var want=rampRules()?rampPop():Math.min(CITY_POP_MAX,32+3*m);
   G.citySpawnT=(G.citySpawnT||0)-dt;
-  if(G.humans.length<want&&G.citySpawnT<=0){ if(G.match) bindPlayer(randomLiving()||G.me); /* Parade Royale: the crowd fills in round a random living head */ if(rampRules()) rampCrowd(); else for(i=0;i<2&&G.humans.length<want;i++){ var p=citySpawnPoint(700,1500); if(p) citySpawn(p); } G.citySpawnT=0.5; if(G.match){ bindPlayer(G.me); hd=G.head; } }
+  if(G.humans.length<want&&G.citySpawnT<=0){ if(G.match) bindPlayer(nextLiving()||G.me); /* Parade Royale: the crowd fills in round the living heads in turn (owner, 28 Oct: never by dice) */ if(rampRules()) rampCrowd(); else for(i=0;i<2&&G.humans.length<want;i++){ var p=citySpawnPoint(700,1500); if(p) citySpawn(p); } G.citySpawnT=0.5; if(G.match){ bindPlayer(G.me); hd=G.head; } }
   cityRestock(F,dt);
   // people left far behind are recycled so the fight stays where you are (and memory stays bounded)
   for(i=0;i<G.humans.length;i++){ var h=G.humans[i]; if(h.dead||h.nest) continue; var d=G.match?headDist(h.x,h.y):Math.hypot(h.x-hd.x,h.y-hd.y); if(d>2600||(G.match&&d>ROYALE_RING_GONE&&royaleOutRing(h.x,h.y,0))){ h.farT=(h.farT||0)+dt; if(h.farT>6) h.dead=true; } else h.farT=0; } // in a match people left outside the ring, out of everyone's sight, are recycled too: the crowd follows the hordes in
   // minis that haven't found you yet patrol toward where you are
-  (G.minis||[]).forEach(function(mi){ if(mi.dead||!mi.city||mi.awake) return; mi.patrolT=(mi.patrolT||0)-dt; if(mi.patrolT<=0){ mi.patrolT=8; var n=cityNodeNear(F,hd.x+(Math.random()-0.5)*700,hd.y+(Math.random()-0.5)*700); if(n>=0){ mi.px=F.nav.nodes[n].x; mi.py=F.nav.nodes[n].y; } } });
+  (G.minis||[]).forEach(function(mi){ if(mi.dead||!mi.city||mi.awake) return; mi.patrolT=(mi.patrolT||0)-dt; if(mi.patrolT<=0){ mi.patrolT=8; var th=G.match?headOf(nearestPlayer(mi.x,mi.y,true)||G.me):hd; /* a match: toward the nearest living head, not the host's */ var n=cityNodeNear(F,th.x+(Math.random()-0.5)*700,th.y+(Math.random()-0.5)*700); if(n>=0){ mi.px=F.nav.nodes[n].x; mi.py=F.nav.nodes[n].y; } } });
   // a crew that's dead leaves no gun behind for anyone else to man
   if(F.nests.some(function(ns){ return ns.mobile&&ns.g&&ns.g.dead; })) F.nests=F.nests.filter(function(ns){ return !ns.mobile||!ns.g||!ns.g.dead; });
   G.cityCheckT=(G.cityCheckT||0)-dt;
@@ -4176,6 +4182,7 @@ function cityMini(quiet){
 /* Reinforcement gunships: their own health, their own pad, their own rhythm. Never the campaign's victory or bounty. */
 function spawnHeli(){
   var F=G.F, hd=G.head, pads=F.nav.nodes.filter(function(n){ var d=Math.hypot(n.x-hd.x,n.y-hd.y); return n.k==='junction'&&d>450&&d<1300; });
+  var free=pads.filter(function(n){ return !(G.bosses||[]).some(function(o){ return !o.dead&&o.pad&&Math.hypot(o.pad.x-n.x,o.pad.y-n.y)<140; }); }); if(free.length) pads=free; // never two gunships on one pad
   if(!pads.length) return null; var pd=pads[Math.floor(Math.random()*pads.length)], a=Math.random()*TAU;
   var b={campaign:false,x:hd.x+Math.cos(a)*1400,y:hd.y+Math.sin(a)*1400,hp:3,maxHp:3,state:'arrive',t:-Math.random()*2,spot:{x:hd.x,y:hd.y},rot:0,heading:0,alt:1,cycle:0,landT:0,dead:false,pad:{x:pd.x,y:pd.y,r:70},dmgT:0,strafeT:4+Math.random()*4};
   (G.bosses||(G.bosses=[])).push(b); banner(':gunship: Another gunship inbound.'); Snd.boss('gunship','call'); return b;
@@ -4431,7 +4438,8 @@ function rampCrowd(){ var p=citySpawnPoint(450,1000); if(!p) return 0; var n=3+M
   for(var i=0;i<n&&G.humans.length<rampPop();i++){ var q=freeNear(G.F,p.x+(Math.random()-0.5)*90,p.y+(Math.random()-0.5)*90,HUMAN_R+2); if(citySpawn(q,null,rampProf())) made++; } return made; }
 /* Each rampage minute from the second on: one small squad, a bigger one later, from two sides after minute 8. */
 function rampMinute(){ var m=Math.floor(rampMin()); if(m<RAMP_SQUAD_FROM) return; var n=Math.min(7,2+Math.floor((m-RAMP_SQUAD_FROM)/1.5)), ways=m>=12?3:m>=8?2:1, a0=Math.random()*TAU;
-  for(var k=0;k<ways;k++) citySquad(n,a0+k*TAU/ways,null); banner(':gunship: Minute '+(m+1)+'. '+(RAMP_NOTE[m]||(m===RAMP_SQUAD_FROM?'They have started shooting back.':'More of them.'))); }
+  for(var k=0;k<ways;k++) citySquad(n,a0+k*TAU/ways,null);
+  if(!G.match||RAMP_NOTE[m]) banner(':gunship: Minute '+(m+1)+'. '+(RAMP_NOTE[m]||(m===RAMP_SQUAD_FROM?'They have started shooting back.':'More of them.'))); } // a match hears only the three armoury notes (owner, 28 Oct: too many notifications)
 /* Rampage lends a random monster, only from those you have unlocked (owner, 20 Oct), in the colour you picked for it. */
 function rampSkin(){ var ids=Object.keys(SKINS).filter(skinUnlocked); return ids[Math.floor(Math.random()*ids.length)]||'zombie'; }
 /* RAMPAGE opens a pick-three of the six in-run mutations (owner, 8 Oct: chosen, not random); the last three stay picked. */
@@ -4783,7 +4791,7 @@ function bulletBlockedBy(F,x,y){ // the piece a shot at (x,y) is inside, or null
 function bulletBlocked(F,x,y){ return !!bulletBlockedBy(F,x,y); }
 function lineBlocked(F,x1,y1,x2,y2){ if(segWallHit(F,x1,y1,x2,y2)) return true; var d=Math.hypot(x2-x1,y2-y1), n=Math.ceil(d/24); for(var i=1;i<n;i++){ var t=i/n; if(bulletBlocked(F,x1+(x2-x1)*t,y1+(y2-y1)*t)) return true; } return false; }
 function applyBelts(e,F,dt){ for(var i=0;i<F.belts.length;i++){ var b=F.belts[i]; if(e.x>b.x&&e.x<b.x+b.w&&e.y>b.y&&e.y<b.y+b.h){ e.x+=b.dx*130*dt; e.y+=b.dy*130*dt; } } }
-function hazardAt(F,x,y,r,skipMine){ for(var i=0;i<F.hazards.length;i++){ var hz=F.hazards[i]; if(skipMine&&hz.mine) continue; if(Math.hypot(x-hz.x,y-hz.y)<hz.r+r*0.3) return hz; } return null; }
+function hazardAt(F,x,y,r,skipMine){ for(var i=0;i<F.hazards.length;i++){ var hz=F.hazards[i]; if(skipMine&&hz.mine&&(skipMine===true||hz.by===skipMine)) continue; /* true: every trail; a player id (a match): that player's own */ if(hz.only&&skipMine!==true&&hz.only!==skipMine) continue; /* a trick's fire burns its target's head only */ if(Math.hypot(x-hz.x,y-hz.y)<hz.r+r*0.3) return hz; } return null; }
 function avoidFire(h,F){ for(var i=0;i<F.hazards.length;i++){ var hz=F.hazards[i]; if(hz.kind!=='fire') continue; var fx=h.x-hz.x, fy=h.y-hz.y, fd=Math.hypot(fx,fy)||0.001, lim=hz.r+28; if(fd<lim){ h.x+=fx/fd*(lim-fd); h.y+=fy/fd*(lim-fd); } } }
 
 /* ---------- game setup ---------- */
@@ -5775,6 +5783,7 @@ function eat(h,byHorde){
   var heal=ty.ab==='beefy'?15:(ty.hostile?3:1);
   G.hp=Math.min(G.st.maxHp,G.hp+heal); if(ty.ab==='beefy') Snd.play('gulp',h.x,h.y);
   G.chomp=0.3; if(G.stacks.adrenaline>0){ G.adr=1.5; Snd.play('adren',hd.x,hd.y); }
+  if(!G.match) G.rush=Math.max(G.rush||0,byHorde?FEEL.rush.horde:FEEL.rush.head); // a match has its own kick (kickEat, owner 21 Oct)
   if(!(G.surgeTell>0)&&!(G.surgeT>0)){ G.surge=Math.min(1,G.surge+1/SURGE_EATS); if(G.surge>=1) startSurge(); }
   Snd.capture(h,'bite',G.combo-1); Haptic.tap(15);
   spawnParts(h.x,h.y,8,[ty.color,ZSKIN]);
@@ -5799,7 +5808,9 @@ function removeSeg(i,cause){
   if(cause!=='rejoin') Snd.play('squelch',s.x,s.y);
   if(G.match) Royale.onSegLost(G.cur,s,cause,i);
   if(['trap','rejoin','gunship','hunter','mini','stray','fracture','bounce','eaten','ring','ghost'].indexOf(cause)<0){ var near=null, nd=300; for(var q=0;q<G.humans.length;q++){ var hq=G.humans[q], dq=Math.hypot(hq.x-s.x,hq.y-s.y); if(!hq.dead&&dq<nd){ nd=dq; near=hq; } } if(near) Snd.human(near,'cheer'); }
-  if(cause!=='trap'&&cause!=='rejoin'&&cause!=='gunship'&&cause!=='hunter'&&cause!=='mini'&&cause!=='bounce'&&cause!=='eaten'&&cause!=='ring'&&cause!=='ghost'&&!(G.surgeT>0)&&!(G.ranksT>0)&&i<n-3){
+  /* In a match only a rival's bite breaks a line, and never a braced one (ROYALE.md §4.1, owner 28 Oct): people's guns, flames and
+     grenades thin it one zombie at a time, so the only strays on the field are the duel's and the dead's. */
+  if(cause!=='trap'&&cause!=='rejoin'&&cause!=='gunship'&&cause!=='hunter'&&cause!=='mini'&&cause!=='bounce'&&cause!=='eaten'&&cause!=='ring'&&cause!=='ghost'&&!(G.surgeT>0)&&!(G.ranksT>0)&&i<n-3&&(!G.match||(cause==='bite'&&!(G.braceT>0)))){
     Snd.play('fracture');
     var cut=G.segs.splice(i);
     for(var k=0;k<cut.length;k++) makeStray(cut[k]);
@@ -5819,7 +5830,7 @@ var PA_CYCLE=[0,20,16,12,9,6];
 /* Lunge reach by rank when they snap. Between snaps they are ordinary strays at every rank, spread out and wandering a
    little; they only pull together for the snap itself (owner, 7 Oct: no clumping or sit-still pocket while docile). */
 var PA_REACH=[160,140,160,180,200,220], STRAY_GATHER_R=160, STRAY_GATHER_STOP=40, STRAY_GATHER_SP=35;
-function paCycle(){ var r=sk('passive'); return r?PA_CYCLE[r]*(0.75+Math.random()*0.5):0; }
+function paCycle(r){ if(r===undefined) r=sk('passive'); return r?PA_CYCLE[r]*(0.75+Math.random()*0.5):0; }
 function startEruption(st){
   var mem=[], i, cx=0, cy=0;
   for(i=0;i<G.strays.length;i++){ var o=G.strays[i]; if(!o.dead&&!(o.rageT>0)&&!(o.tellT>0)&&Math.hypot(o.x-st.x,o.y-st.y)<120) mem.push(o); }
@@ -5845,9 +5856,11 @@ var FEEL={multiWin:0.7, stampLife:0.9, hitGap:0.8, chainHold:3, climb:0.8, slowT
   chainHues:[[3,'#efe7d2'],[5,'#ff9ec4'],[10,'#ff4fd8'],[15,'#b06bff'],[20,'#5aa8ff'],[25,'#4fe3ff'],[30,'#ffd65a'],[40,'#ff9a3d'],[50,'#ffffff']], // bone, brain-pink, magenta, violet, electric blue, cyan, gold, amber, white-hot (cycling)
   chainBounty:{10:'chain10',20:'chain20',30:'chain30',50:'chain50',100:'chain100'}, multi:['','','DOUBLE','TRIPLE','BUFFET'],
   bounty:{buffet:1,squad:2,chain10:1,chain20:2,chain30:3,chain50:4,chain100:5,mini:2},
-  chainT:[3.6,2.8], chainEase:[5,10]}; // the streak window (owner, 16 Oct: easier to get going; playtest 4: still too hard to keep): 3.6s while the chain is small, easing to 2.8s by chain 10; was 3/2.2, first a flat 2s
+  chainT:[3.6,2.8], chainEase:[5,10], // the streak window (owner, 16 Oct: easier to get going; playtest 4: still too hard to keep): 3.6s while the chain is small, easing to 2.8s by chain 10; was 3/2.2, first a flat 2s
+  rush:{head:0.3,horde:0.15,fade:0.4}}; // every eat kicks the head forward (owner, 22 Oct: "no speed boost when you eat"): +30% for your own bite, +15% when the horde eats, fading at 0.4/s (0.75s / 0.4s); adds to Adrenaline's +40%
 /* How long the next bite has before the chain lapses, at the chain you are on now. */
 var CLING={ang:1.2,grip:0.75}; // heaving: within ~70° of the push the head keeps 75% of its grip on the face (owner, 16 Oct: speed made it too easy to slide off a shield)
+function rushMul(){ return 1+(G.adr>0?0.4:0)+(G.rush||0); } // Adrenaline and the eat kick, on top of Momentum (single-player; a match's kick is kickMul)
 function chainWindow(){ var e=FEEL.chainEase, u=Math.max(0,Math.min(1,(G.combo-e[0])/(e[1]-e[0]))); return FEEL.chainT[0]+(FEEL.chainT[1]-FEEL.chainT[0])*u; }
 function miniBounty(stage){ return FEEL.bounty.mini+Math.floor((stage||0)/3); } // 2 in the office, 3 in the gym, 4 in the lab
 var CLIMB_LIVE=typeof window!=='undefined'&&!!window.requestAnimationFrame; // the stair tally plays in a browser; headless sims step straight through
@@ -6152,6 +6165,10 @@ function updateStrays(dt){
       st.h+=(st.spin||14)*dt; st.moving=false; resolve(st,SEG_R-2,F);
       if(st.flyT<=0){ st.flyT=0; if((st.flyH||0)<60){ st.bt=0.6; continue; } spawnParts(st.x,st.y,10,['#8a8296','#5a5664','#8fd14f']); G.decals.push({x:st.x,y:st.y,r:12,life:8,color:'#2a2731'}); G.shake=Math.max(G.shake,0.12); Snd.play('crunch',st.x,st.y); st.bt=0.6; }
       continue; }
+    if(st.claimT>0){ // a cut's dazed half (ROYALE.md §4.1, owner 28 Oct): stands where it fell, the victim's or the biter's to take and nobody else's
+      st.claimT-=dt; st.moving=false;
+      if(G.match&&!(st.joinT>0)&&Royale.fights&&Royale.fights.claimant){ var cl=Royale.fights.claimant(st); if(cl){ bindPlayer(cl); hd=G.head; rejoin(st); continue; } }
+      resolve(st,SEG_R-2,F); continue; }
     if(G.match){ var nps=nearestPlayer(st.x,st.y,true); if(nps){ bindPlayer(nps); hd=G.head; } }
     if(!st.hostile&&!(st.joinT>0)&&Math.hypot(st.x-hd.x,st.y-hd.y)<hd.r+55&&!solidHit(F,st.x,st.y,hd.x,hd.y)){ rejoin(st); continue; } // a ghost's summoned stray is never collected
     if(st.recallT>0){ // called back: run home along the trail; out of time, join at the tail
@@ -6161,16 +6178,19 @@ function updateStrays(dt){
       if(rdd>2){ st.h=Math.atan2(rdy,rdx); var rstp=Math.min(rdd,RECALL_SP*dt); wallStep(st,st.x+rdx/rdd*rstp,st.y+rdy/rdd*rstp,F); st.moving=true; st.walk+=rstp*0.1; } else st.moving=false;
       resolve(st,SEG_R-2,F); continue; }
     var tgt=null, bd=170, sp=0;
-    if(sk('passive')&&!(st.tellT>0)&&!(st.rageT>0)){ if(st.eruptT===undefined) st.eruptT=paCycle(); st.eruptT-=dt; if(st.eruptT<=0) startEruption(st); }
+    var par=strayRank(st,'passive'); // a match: the stray's owner's Passive Aggressive, not the nearest head's
+    if(par&&!(st.tellT>0)&&!(st.rageT>0)){ if(st.eruptT===undefined) st.eruptT=paCycle(par); st.eruptT-=dt; if(st.eruptT<=0) startEruption(st); }
     if(st.tellT>0){ st.tellT-=dt; if(st.tellT<=0){ st.tellT=0; st.rageT=2.0; } st.moving=false; continue; }
     if(st.rageT>0){
       st.rageT-=dt;
-      var rgx=st.rx+Math.cos(st.ringA)*60, rgy=st.ry+Math.sin(st.ringA)*60, rv=null, rd=PA_REACH[Math.min(5,sk('passive'))];
+      var rgx=st.rx+Math.cos(st.ringA)*60, rgy=st.ry+Math.sin(st.ringA)*60, rv=null, rvQ=null, rd=PA_REACH[Math.min(5,strayRank(st,'passive'))];
       if(st.rageT<1.6) for(j=0;j<G.humans.length;j++){ var rh=G.humans[j]; if(rh.dead) continue; var rdd=Math.hypot(rh.x-st.x,rh.y-st.y); if(rdd<rd){ rd=rdd; rv=rh; } }
       var rmb=G.mini&&!G.mini.dead&&st.rageT<1.6?G.mini:null; if(rmb&&Math.hypot(rmb.x-st.x,rmb.y-st.y)-rmb.r<rd){ rd=Math.hypot(rmb.x-st.x,rmb.y-st.y)-rmb.r; rv=rmb; }
+      if(G.match&&st.rageT<1.6&&Royale.build&&Royale.build.snapTarget){ var rz=Royale.build.snapTarget(st,rd); if(rz){ rd=rz.d; rv=rz.seg; rvQ=rz.Q; } } // a rival's zombie in reach: the snap thins its line
       var tx2=rv?rv.x:rgx, ty2=rv?rv.y:rgy, ddx=tx2-st.x, ddy=ty2-st.y, ddd=Math.hypot(ddx,ddy);
       if(ddd>2){ st.h=Math.atan2(ddy,ddx); var stp=Math.min(ddd,165*dt); wallStep(st,st.x+ddx/ddd*stp,st.y+ddy/ddd*stp,F); st.moving=true; st.walk+=stp*0.1; } else st.moving=false;
-      if(rv===G.mini){ if(rd<SEG_R+2&&st.bt<=0){ hitMini(rv,3); st.bt=0.3; spawnParts(st.x,st.y,2,['#b3202b']); } }
+      if(rvQ){ if(rd<SEG_R*2+2&&st.bt<=0){ Royale.build.snapHit(st,rvQ,rv); st.bt=0.3; } }
+      else if(rv===G.mini){ if(rd<SEG_R+2&&st.bt<=0){ hitMini(rv,3); st.bt=0.3; spawnParts(st.x,st.y,2,['#b3202b']); } }
       else if(rv&&rd<SEG_R+HUMAN_R+2&&st.bt<=0){ turnHuman(rv,st); st.bt=0.3; }
       resolve(st,SEG_R-2,F);
       if(st.rageT<=0){ st.rageT=0; st.docile=false; }
@@ -6480,20 +6500,20 @@ function updateHead(dt){
   /* A finger on the screen means go, even before it has dragged past the dead zone (owner, 10 Oct: the zombie was
      stopping when a thumb was held still, re-touched without dragging, or still down after a draft closed). */
   var dir=Royale.inputFor(G.cur);
-  if(dir){ var target=Math.atan2(dir.y,dir.x), diff=angNorm(target-hd.h), mt=steerRate(st,diff,st.speed*(G.adr>0?1.4:1)*(G.match?1+(G.eatKickV||0):1))*dt; /* the eat kick turns as tight as it runs */ hd.h+=Math.max(-mt,Math.min(mt,diff)); }
+  if(dir){ var target=Math.atan2(dir.y,dir.x), diff=angNorm(target-hd.h), mt=steerRate(st,diff,st.speed*rushMul()*(G.match?1+(G.eatKickV||0):1))*dt; /* the eat kick turns as tight as it runs */ hd.h+=Math.max(-mt,Math.min(mt,diff)); }
   hd.r=(HEAD_R+Math.min(HEAD_BITE_MAX,0.5*G.stacks.bite)+Math.min(HEAD_EAT_MAX,G.eaten*0.02))*stanceScale();
 
-  var hz=hazardAt(F,hd.x,hd.y,hd.r,true), spm=1;
+  var hz=hazardAt(F,hd.x,hd.y,hd.r,G.match&&G.cur?G.cur.id:true), spm=1; // a match: only your own trail is harmless to you; a rival's burns
   if(hz){
     var hdmg=(hz.kind==='fire'?7*st.fireMult:5*st.acidMult)*dt;
     if(hdmg>0&&!(G.reviveT>0)){ G.hp-=hdmg; G.hurt=Math.max(G.hurt,0.15); if(Math.random()<dt*4) addFloat(hd.x,hd.y-26,hz.kind==='fire'?':fire:':':hazmat:','#f2b134',13); }
     if(hz.kind==='acid') spm=0.6;
   }
   if(G.stun>0){ G.stun-=dt; spm=0; }
-  G.adr=Math.max(0,G.adr-dt);
+  G.adr=Math.max(0,G.adr-dt); G.rush=Math.max(0,(G.rush||0)-FEEL.rush.fade*dt);
   /* Let go and you stop (owner, 9 Oct: players wanted to hold still); the head eases to a halt and back up to speed. */
-  G.go=G.go===undefined?1:G.go; G.go+=((dir?1:0)-G.go)*Math.min(1,dt*(dir?GO_EASE:STOP_EASE)); G.idleT=dir?0:(G.idleT||0)+dt;
-  var sp=st.speed*spm*(G.adr>0?1.4:1)*(G.foamSlow||1)*G.go*(G.match?kickMul(dt):1), ox=hd.x, oy=hd.y; // a match: the eat kick
+  G.go=G.go===undefined?1:G.go; G.go+=((dir?1:0)-G.go)*Math.min(1,dt*(dir?GO_EASE:STOP_EASE)); G.idleT=dir?0:(G.idleT||0)+dt; if(G.match) braceTick(dt,!!dir);
+  var sp=st.speed*spm*rushMul()*(G.foamSlow||1)*G.go*(G.match?kickMul(dt)*duelMul(dt):1), ox=hd.x, oy=hd.y; // a match: the eat kick, the duel's stagger, a rival's bile, your own scrum
   stepHead(hd,F,Math.cos(hd.h)*sp*dt,Math.sin(hd.h)*sp*dt,dt);
   /* Cling: pressing on something heavy, joystick wobble no longer slides you along its face; the push itself is untouched and a turn past CLING.ang still peels you off. */
   if(G.heave&&G.heave.fresh){ G.heave.fresh=false; var HV=G.heave, pushA=Math.atan2(-HV.ny,-HV.nx);
@@ -6585,6 +6605,7 @@ function update(dt){
       if(segWallHit(F,bpx,bpy,pr.x,pr.y)){ pr.dead=true; continue; }
       if(pr.life<=0||bulletBlocked(F,pr.x,pr.y)){ pr.dead=true; continue; }
       var pmb=miniAt(pr.x,pr.y,6); if(pmb){ pr.dead=true; Snd.play('splat',pr.x,pr.y); slowHunter(pmb,0.6,4,false); hitMini(pmb,5); pmb.awake=true; spawnParts(pr.x,pr.y,10,['#8fd14f','#55efc4']); }
+      if(G.match&&Royale.build&&Royale.build.bileHit&&Royale.build.bileHit(pr)) continue; // a rival's head: slimed (ROYALE.md §15)
       if(G.hunter&&Math.hypot(G.hunter.x-pr.x,G.hunter.y-pr.y)<G.hunter.r+6){ pr.dead=true; Snd.play('splat',pr.x,pr.y); slowHunter(G.hunter,0.6,4,false); spawnParts(pr.x,pr.y,10,['#8fd14f','#55efc4']); addFloat(G.hunter.x,G.hunter.y-G.hunter.r-10,'slimed','#8fd14f',12); continue; }
       for(j=0;j<G.humans.length;j++){ var bh=G.humans[j]; if(bh.dead) continue; if(Math.hypot(bh.x-pr.x,bh.y-pr.y)<HUMAN_R+5){ pr.dead=true; Snd.group('slimed',bh.x,bh.y); Snd.play('splat',bh.x,bh.y); hitFx(bh,bh.x,bh.y,Math.atan2(pr.vy,pr.vx),['#8fd14f','#55efc4']); if(pr.splash){ for(var q2=0;q2<G.humans.length;q2++){ var sh=G.humans[q2]; if(!sh.dead&&Math.hypot(sh.x-pr.x,sh.y-pr.y)<70){ sh.bileT=4; sh.burst=0; } } } else { bh.bileT=4; bh.burst=0; } spawnParts(pr.x,pr.y,8,['#8fd14f','#55efc4']); G.decals.push({x:pr.x,y:pr.y,r:12,life:15,color:'#3f7a2a'}); addFloat(bh.x,bh.y-18,'covered in bile','#8fd14f',11); break; } }
       continue;
@@ -7427,6 +7448,7 @@ function draw(){
   var vx0=cx-W/2-60, vx1=cx+W/2+60, vy0=cy-H/2-60, vy1=cy+H/2+60;
   var shx=G.shake>0?(Math.random()-0.5)*14*G.shake:0, shy=G.shake>0?(Math.random()-0.5)*14*G.shake:0;
   ctx.save();
+  var zm=G.camZoom||1; if(zm!==1){ ctx.translate(W/2,H/2); ctx.scale(zm,zm); ctx.translate(-W/2,-H/2); } // a match's takedown punches the world in for a beat (ui.js); the HUD is drawn after the restore
   ctx.translate(Math.round(W/2-cx+shx),Math.round(H/2-cy+shy));
   ctx.textAlign='center'; ctx.textBaseline='middle';
 
@@ -7637,8 +7659,8 @@ function updateHud(){
   tk.textContent=Math.ceil(Math.max(0,G.hp));
   if(lv0) artText(lv0,lives>3?':undo:×'+lives:new Array(lives+1).join(':undo:')); // a spare life is a Ctrl+Z, one icon each
   if(ticks&&ticks._max!==st.maxHp){ ticks._max=st.maxHp; ticks.style.backgroundSize=(Math.round(1000*seg/st.maxHp)/10)+'% 100%'; }
-  var tm=$('time'), onClock=G.sd.lock&&!G.sd.endless&&!G.bonusLost&&G.lockT>=0; tm.textContent=G.match?fmt(Math.floor(G.match.clock||0)):G.phase==='city'?fmt(Math.ceil(Math.max(0,CITY_T-G.cityT))):G.phase==='free'?fmt(G.freeT):onClock?fmt(Math.ceil(Math.max(0,G.sd.lock-G.lockT))):fmt(G.t); if(onClock&&G.alarm) tm.classList.add('alarm'); else tm.classList.remove('alarm'); if(G.phase==='city'&&G.cityT>CITY_T-60) tm.classList.add('alarm'); /* the last minute blinks */
-  var lostN=0; for(var li=0;li<G.strays.length;li++) if(!G.strays[li].dead) lostN++; var mobVal=G.segs.length+':'+lostN, mobEl=$('horde'); if(mobEl._mobVal!==mobVal){ mobEl._mobVal=mobVal; mobEl.textContent=G.segs.length+(lostN?' (+'+lostN+' lost)':''); mobEl.innerHTML=G.segs.length+(lostN?'<small class="lost">+'+lostN+' lost</small>':''); }
+  var tm=$('time'); if(tm.style) tm.style.display=G.match?'none':''; /* a match has one clock: the strip's countdown */ var onClock=G.sd.lock&&!G.sd.endless&&!G.bonusLost&&G.lockT>=0; tm.textContent=G.match?fmt(Math.floor(G.match.clock||0)):G.phase==='city'?fmt(Math.ceil(Math.max(0,CITY_T-G.cityT))):G.phase==='free'?fmt(G.freeT):onClock?fmt(Math.ceil(Math.max(0,G.sd.lock-G.lockT))):fmt(G.t); if(onClock&&G.alarm) tm.classList.add('alarm'); else tm.classList.remove('alarm'); if(G.phase==='city'&&G.cityT>CITY_T-60) tm.classList.add('alarm'); /* the last minute blinks */
+  var lostN=0, meId=G.match&&G.cur?G.cur.id:0; for(var li=0;li<G.strays.length;li++) if(!G.strays[li].dead&&(!G.match||G.strays[li].from===meId)) lostN++; /* a match: your own, not everyone's */ var mobVal=G.segs.length+':'+lostN, mobEl=$('horde'); if(mobEl._mobVal!==mobVal){ mobEl._mobVal=mobVal; mobEl.textContent=G.segs.length+(lostN?' (+'+lostN+' lost)':''); mobEl.innerHTML=G.segs.length+(lostN?'<small class="lost">+'+lostN+' lost</small>':''); }
   $('score').textContent=Math.floor(G.score); $('score').style.display=G.match?'none':''; // a match keeps no score: lane F's strip and the end screen say what matters
   var bh=$('brainHud'); if(bh){ setCls(bh,'hidden',noBrains()); var bv=Math.max(0,brainsEarned()-brainsInFlight()); if(bh._v!==bv){ bh._v=bv; $('brainN').textContent=bv; } var rg=$('brainRing'); if(rg&&rg.style&&rg.style.setProperty) rg.style.setProperty('--f',brainBits().toFixed(2)); setCls(bh,'pulse',(G.brainPulse||0)>0.15); setCls(bh,'rest',!(G.brainShowT>0)&&!(G.flyers&&G.flyers.length)); } // shown while brains fly in and 2s after; the total is in the pause
   updatePowerChip();
@@ -7969,7 +7991,7 @@ var ROYALE_OPEN_LOOKS=true;
    21 Oct: the aura must not read as either), so the first is bone and the fourth magenta. */
 var ROYALE_COLOURS=['#efe7d2','#4fc3f7','#ffd54f','#ff4fd8','#ce93d8','#ff9f43','#4dd0c4','#f48fb1','#90a4ae','#dce775','#7986cb','#ffab91'];
 /* The per-player part of G. Objects and arrays are shared by reference while bound; scalars are copied in and out. */
-var PLAYER_FIELDS=['head','deathCause','deathBy','walk','go','idleT','headMoved','adr','stun','foamSlow','heave','burnT','chomp','path','pathCut','comp','mobBox',
+var PLAYER_FIELDS=['head','deathCause','deathBy','walk','go','idleT','headMoved','adr','rush','stun','foamSlow','heave','burnT','chomp','path','pathCut','comp','mobBox',
   'hp','hurt','inv','reviveT','hpLast','hpGhostFrom','hpDropAt','lifeShowAt','hpHealAt',
   'st','stacks','seen','fx','run','pickFx','roulette','giant',
   'segs','peakMob','floorPeak','tierArm','fevered',
@@ -7977,13 +7999,13 @@ var PLAYER_FIELDS=['head','deathCause','deathBy','walk','go','idleT','headMoved'
   'combo','comboT','comboMax','chainPop','chainHot','chainColT','chainHeld','chainHeat','chainHeatCol','multi','buffetPaid','squadsEaten','stamp','stampNext',
   'score','eaten','eatenPaid','runBrains',
   'fireT','lastFire','crackleT','vomT','roarT','zapT','fenceT','groundT',
-  'batT','wrapDrop','skinOverride','toneOverride','eatKick','eatKickV','streakT'];
+  'batT','wrapDrop','skinOverride','toneOverride','eatKick','eatKickV','streakT','staggerT','braceT','braceCd','bileT'];
 /* The eat kick (owner, 21 Oct: "a small speed bump every time they eat a human"): every person eaten in a match adds
    ROYALE_KICK to the head's speed, stacking to ROYALE_KICK_MAX and fading with a ROYALE_KICK_T time constant, so a
    streak of bites keeps you quick and one bite is a short lunge. Momentum is still where lasting speed comes from.
    The speed itself (eatKickV) eases onto the kick over ROYALE_KICK_RISE, so no head jolts on a guest's screen. */
 var ROYALE_KICK=0.12, ROYALE_KICK_MAX=0.4, ROYALE_KICK_T=0.5, ROYALE_KICK_RISE=0.15;
-function kickEat(){ G.eatKick=Math.min(ROYALE_KICK_MAX,(G.eatKick||0)+ROYALE_KICK); if(G.eatKick>=STREAK_ON) G.streakT=STREAK_HOLD; }
+function kickEat(){ G.eatKick=Math.min(ROYALE_KICK_MAX,(G.eatKick||0)+ROYALE_KICK); if(G.eatKick>=STREAK_ON) G.streakT=STREAK_HOLD; if(G.staggerT>0) G.staggerT=Math.max(0,G.staggerT-STAGGER_EAT); } // eating is the way out of a stagger
 /* The streak aura (owner, 22 Oct: "if someone is on the streak make bullets from little people bounce from the radiating
    speed aura"): two quick bites (a kick of STREAK_ON) light it for STREAK_HOLD, renewed by every bite while the kick is
    that high. While it is lit, human bullets (shoot(): never bosses or gunships) that reach the head's aura or the first
@@ -8003,6 +8025,28 @@ function streakBounce(pr,ox,oy,r){
 }
 function kickMul(dt){ var k=G.eatKick||0, v=G.eatKickV||0; if(G.streakT>0) G.streakT=Math.max(0,G.streakT-dt); if(!(k>0)&&!(v>0)) return 1;
   v+=(k-v)*Math.min(1,dt/ROYALE_KICK_RISE); k*=Math.exp(-dt/ROYALE_KICK_T); if(k<0.004) k=0; if(v<0.004&&!k) v=0; G.eatKick=k; G.eatKickV=v; return 1+v; } // the bound player's; 1 outside a match
+/* The duel (owner, 28 Oct; ROYALE.md §4.1): a cut is a blow. The cut horde is staggered: its head runs at STAGGER_MUL for
+   STAGGER_T (blows stack to STAGGER_MAX), every person it eats takes STAGGER_EAT off, and the last STAGGER_EASE eases back
+   to full speed, so the loss looms and the way out is food, a doorway or the ring. Letting the stick go for BRACE_ARM
+   braces the line for BRACE_T (a bite kills one zombie and never fractures) and then it cools for BRACE_CD from the
+   arming; any steering ends the brace. All on the bound player; a guest learns everyone's from the fights lane's pack. */
+var STAGGER_MUL=0.55, STAGGER_T=2.5, STAGGER_EAT=0.5, STAGGER_MAX=4, STAGGER_EASE=0.3;
+var BRACE_ARM=0.25, BRACE_T=2, BRACE_CD=6;
+function stagger(t){ G.staggerT=Math.min(STAGGER_MAX,(G.staggerT||0)+(t===undefined?STAGGER_T:t)); }
+function staggerMul(dt){ var t=G.staggerT||0; if(!(t>0)) return 1; t=Math.max(0,t-dt); G.staggerT=t; return t>=STAGGER_EASE?STAGGER_MUL:STAGGER_MUL+(1-STAGGER_MUL)*(1-t/STAGGER_EASE); }
+function braceOn(){ return !!G.match&&G.braceT>0; }
+/* The build against rivals (ROYALE.md §15, owner 28 Oct): a slimed head (a rival's Bile) runs at BILE_SLOW for BILE_T and its
+   line is loose (a bite takes the whole cut); a scrummed head (Mob) runs at RANKS_SLOW while the ring holds. duelMul is
+   every match slow on the bound head in one number, ticking the timers it owns; staggerMul ticks the stagger. */
+var BILE_SLOW=0.6, BILE_T=4, RANKS_SLOW=0.65;
+function duelMul(dt){ var m=staggerMul(dt); if(G.bileT>0){ G.bileT=Math.max(0,G.bileT-dt); m*=BILE_SLOW; } if(G.ranksT>0) m*=RANKS_SLOW; return m; }
+/* A player's match rank in a combat family (its own run, bound or not); a stray's owner's rank (0 for nobody's or the dead's). */
+function rankOf(P,id){ if(!P) return 0; var r=P===G.cur?G.run:P.run; return (r&&r.ranks&&r.ranks[id])||0; }
+function strayRank(st,id){ if(!G.match) return sk(id); var O=playerById(st.from); return O&&O.alive?rankOf(O,id):0; }
+function braceTick(dt,dir){ if(G.braceCd>0) G.braceCd=Math.max(0,G.braceCd-dt);
+  if(dir){ G.braceT=0; return; }
+  if(G.braceT>0){ G.braceT=Math.max(0,G.braceT-dt); return; }
+  if(G.idleT>=BRACE_ARM&&!(G.braceCd>0)&&matchLive()&&G.hp>0){ G.braceT=BRACE_T; G.braceCd=BRACE_T+BRACE_CD; } }
 function isRoyale(){ return !!(G&&G.match); }
 function matchLive(){ return !G.match||G.match.phase==='play'; } // outside 'play' heads stand still, cannot be hurt and do not eat
 function mrand(){ return G.match.rng(); }
@@ -8011,9 +8055,9 @@ function seededBuild(seed,fn){ var mr=Math.random; Math.random=cityRng(seed); tr
 
 /* The per-player part of G, exactly what newGame used to put there. A fresh player in any mode starts from this. */
 function playerDefaults(){
-  var d={head:{x:0,y:0,h:0,r:HEAD_R,vx:0,vy:0},hp:100,inv:0,stun:0,walk:0,comp:1,headMoved:0,adr:0,runBrains:0,fireT:6,burnT:0,lastFire:{x:0,y:0},vomT:4,roarT:5,zapT:2,
+  var d={head:{x:0,y:0,h:0,r:HEAD_R,vx:0,vy:0},hp:100,inv:0,stun:0,walk:0,comp:1,headMoved:0,adr:0,rush:0,runBrains:0,fireT:6,burnT:0,lastFire:{x:0,y:0},vomT:4,roarT:5,zapT:2,
     path:[],segs:[],stacks:{},chomp:0,hurt:0,seen:{},pathCut:0,surge:0,surgeTell:0,surgeT:0,ranksT:0,ranksCd:0,ranksR:0,foamSlow:1,peakMob:0,floorPeak:0,
-    eatKick:0,eatKickV:0,streakT:0,score:0,eaten:0,combo:0,comboT:0,comboMax:0,chainHeat:0,chainColT:0,chainHeatCol:null,heave:null,mobBox:{x0:0,y0:0,x1:0,y1:0},run:null,st:null,deathCause:null,deathBy:0};
+    eatKick:0,eatKickV:0,streakT:0,staggerT:0,braceT:0,braceCd:0,bileT:0,score:0,eaten:0,combo:0,comboT:0,comboMax:0,chainHeat:0,chainColT:0,chainHeatCol:null,heave:null,mobBox:{x0:0,y0:0,x1:0,y1:0},run:null,st:null,deathCause:null,deathBy:0};
   for(var k in ABIL) d.stacks[k]=0;
   d.run=newRun();
   return d;
@@ -8043,13 +8087,19 @@ function headOf(P){ return P===G.cur?G.head:P.head; } // the bound player's head
 function nearestPlayer(x,y,aliveOnly){ var ps=G.players||[], best=null, bd=1e18; for(var i=0;i<ps.length;i++){ var P=ps[i]; if(aliveOnly&&!P.alive) continue; var h=headOf(P), d=(h.x-x)*(h.x-x)+(h.y-y)*(h.y-y); if(d<bd){ bd=d; best=P; } } return best; }
 function headDist(x,y){ var P=nearestPlayer(x,y,true); if(!P) return 1e9; var h=headOf(P); return Math.hypot(h.x-x,h.y-y); }
 function randomLiving(){ var L=livingPlayers(); return L.length?L[Math.floor(mrand()*L.length)]:null; }
+/* The living in turn (owner, 28 Oct: food, squads and mini bosses by rotation, never by dice), by id order from wherever the
+   turn last stopped, so a death skips nobody. */
+var royaleTurn=0;
+function nextLiving(){ var L=livingPlayers(); if(!L.length) return null; var P=L[royaleTurn%L.length]; royaleTurn++; return P; }
+/* Is (x,y) within vw,vh of any living head? The host's camera is only one player's view; spawns hide from every head. */
+function royaleSeen(x,y,vw,vh){ var ps=G.players||[]; for(var i=0;i<ps.length;i++){ var P=ps[i]; if(!P.alive) continue; var h=headOf(P); if(Math.abs(h.x-x)<vw&&Math.abs(h.y-y)<vh) return true; } return false; }
 /* Mode helpers for the existing sections: a match keeps Rampage's people rules and pays no brains. */
 function rampRules(){ return G.mode==='rampage'||G.mode==='royale'; }
 function noBrains(){ return G.mode==='rampage'||!!G.match; }
 /* The people's minute in a match: the 12-minute Rampage curve compressed into the match length (lane C may refine it). */
 function royalePeopleMin(){ var M=G.match; if(Royale.match&&Royale.match.peopleMin) return Royale.match.peopleMin(); return (M.clock/60)*12/(M.length/60); }
 /* A city mini boss for a match (ROYALE.md §4.3): spawned near a random living head, never only the host's. */
-function royaleMini(){ var P=randomLiving(); if(!P) return null; var was=G.cur; bindPlayer(P); var m=cityMini(true); bindPlayer(was); royaleTuneMini(m); return m; }
+function royaleMini(){ var P=nextLiving(); if(!P) return null; var was=G.cur; bindPlayer(P); var m=cityMini(true); bindPlayer(was); royaleTuneMini(m); return m; }
 /* Owner, 20 Oct (playtest 1: "make the Regional Manager weaker"): in a match the Manager, ghost or not, has 65% of its HP
    and a gentler, slower swing (6 HP, 2 zombies, every 2.4 s instead of 10 HP, 4 zombies, every 1.6 s). The Champ and the
    Director are unchanged. Call once on a fresh mini. */
@@ -8061,7 +8111,7 @@ var ROYALE_RING_PEOPLE=120, ROYALE_RING_GONE=800;
 function royaleOutRing(x,y,margin){ var R=G.match&&G.match.ring; if(!R) return false; var r=R.r-(margin||0); if(r<=0) return true; var dx=x-R.x, dy=y-R.y; return dx*dx+dy*dy>r*r; }
 function royaleTuneMini(m){ if(!m||m.kind!=='manager'||m.tuned) return m; m.tuned=true; var R=ROYALE_MANAGER;
   m.hp=m.max=Math.max(1,Math.round(m.max*R.hp)); m.swingDmg=R.dmg; m.swingKill=R.kill; m.swingCd=R.cd; return m; }
-function royaleMinute(){ var M=G.match, rm=Math.floor(rampMin()); if(M.min===undefined) M.min=0; if(rm>M.min){ M.min=rm; var P=randomLiving(); if(P){ var was=G.cur; bindPlayer(P); rampMinute(); bindPlayer(was); } } }
+function royaleMinute(){ var M=G.match, rm=Math.floor(rampMin()); if(M.min===undefined) M.min=0; if(rm>M.min){ M.min=rm; var P=nextLiving(); if(P){ var was=G.cur; bindPlayer(P); rampMinute(); bindPlayer(was); } } }
 /* A bound player dies in a match: its line becomes strays for anyone, the head stays where it fell for the camera. */
 function royaleDie(){ var P=G.cur, cause=G.deathCause||'people', by=G.deathBy||0; G.deathCause=null; G.deathBy=0; P.stats.hordeAtDeath=G.segs.length; while(G.segs.length) makeStray(G.segs.pop()); G.hp=0; Royale.onDeath(P,cause,by); }
 function forPlayers(fn){ var was=G.cur, ps=G.players||[]; for(var i=0;i<ps.length;i++){ bindPlayer(ps[i]); fn(ps[i]); } if(was) bindPlayer(was); }
@@ -8070,8 +8120,8 @@ function moveHead(dt,dir){
   var st=G.st, hd=G.head, F=G.F;
   if(dir){ var target=Math.atan2(dir.y,dir.x), diff=angNorm(target-hd.h), mt=steerRate(st,diff,st.speed*(G.adr>0?1.4:1)*(1+(G.eatKickV||0)))*dt; hd.h+=Math.max(-mt,Math.min(mt,diff)); }
   var spm=G.stun>0?0:1;
-  G.go=G.go===undefined?1:G.go; G.go+=((dir?1:0)-G.go)*Math.min(1,dt*(dir?GO_EASE:STOP_EASE)); G.idleT=dir?0:(G.idleT||0)+dt;
-  var sp=st.speed*spm*(G.adr>0?1.4:1)*(G.foamSlow||1)*G.go*kickMul(dt), ox=hd.x, oy=hd.y;
+  G.go=G.go===undefined?1:G.go; G.go+=((dir?1:0)-G.go)*Math.min(1,dt*(dir?GO_EASE:STOP_EASE)); G.idleT=dir?0:(G.idleT||0)+dt; braceTick(dt,!!dir);
+  var sp=st.speed*spm*(G.adr>0?1.4:1)*(G.foamSlow||1)*G.go*kickMul(dt)*duelMul(dt), ox=hd.x, oy=hd.y;
   hd.x+=Math.cos(hd.h)*sp*dt; hd.y+=Math.sin(hd.h)*sp*dt;
   applyBelts(hd,F,dt); resolveHead(hd,F,dt);
   G.headMoved=Math.hypot(hd.x-ox,hd.y-oy);
@@ -8132,7 +8182,7 @@ Royale.mount=function(id,html,css){
 };
 
 /* Hooks (ROYALE.md §6.2): the existing sections call these; each lane defines what it needs on its own object. */
-var ROYALE_LANES=['match','fights','ghosts','bots','cars','tricks','net','ui']; // Phase 2 adds bots, cars and tricks (ROYALE.md §11, §13, §12)
+var ROYALE_LANES=['match','fights','ghosts','bots','cars','tricks','build','items','truce','net','ui']; // Phase 2 adds bots, cars and tricks (ROYALE.md §11, §13, §12)
 function royaleEach(fn,a,b,c,d){ for(var i=0;i<ROYALE_LANES.length;i++){ var L=Royale[ROYALE_LANES[i]]; if(L&&typeof L[fn]==='function') L[fn](a,b,c,d); } }
 Royale.update=function(dt){ royaleEach('update',dt); };
 Royale.draw=function(layer){ royaleEach('draw',layer); };
@@ -8950,10 +9000,11 @@ function netEvents(list,must){
       var who=h||{x:hd.x,y:hd.y,ty:PROF.intern,skin:HUMAN_SKINS[0],id:'intern',phase:0,dead:true};
       if(G.comboT>0) G.combo++; else G.combo=1; G.comboT=G.comboMax=chainWindow(); G.eaten++; G.chomp=0.3; kickEat(); // the predicted head gets the host's eat kick
       Snd.capture(who,'bite',G.combo-1); Haptic.tap(15); feelEat(who); }
-    else if(ev.k==='bite'){ if(ev.by===me){ Haptic.tap(25); stamp(ev.n>1?'BITE ×'+ev.n:'BITE',1,hd.x,hd.y); } else if(ev.of===me){ G.hurt=Math.max(G.hurt||0,0.3); Haptic.tap(25); } }
+    else if(ev.k==='bite'){ if(ev.by===me){ Haptic.tap(25); stamp(ev.held?'HELD':ev.n?'CUT ×'+ev.n:'CUT',ev.n>=10?3:2,hd.x,hd.y); } else if(ev.of===me){ G.hurt=Math.max(G.hurt||0,0.3); Haptic.tap(25); }
+      if(Royale.ui&&Royale.ui.blow) Royale.ui.blow(ev); } // one word on host and guest; the duel strip and the victim's word
     else if(ev.k==='bounce'){ if(ev.a===me||ev.b===me){ Haptic.tap(25); G.shake=Math.max(G.shake||0,0.15); } }
     else if(ev.k==='death'){ var D=playerById(ev.id); if(D&&D.alive&&G.match.phase!=='ended'){ Royale.onDeath(D,ev.cause,ev.by); G.match.events.length=0; } if(ev.id===me) Haptic.tap(60); }
-    else if(ev.k==='ghostDown'){ if(ev.by===me){ Haptic.tap(30); stamp('GHOST DOWN',3,hd.x,hd.y); } }
+    else if(ev.k==='ghostDown'){ if(ev.by===me){ Haptic.tap(30); stamp('BOSS DOWN',3,hd.x,hd.y); } }
     else if(ev.k==='phase'){ if(G.match.phase!=='ended'&&typeof ev.phase==='string') G.match.phase=ev.phase; }
     else if(ev.k==='x'){ var Le=netLane(ev.l); if(Le&&Le.onEvent) Le.onEvent(ev); }
     else if(ev.k==='end'){ if(netS.ended) continue; netS.ended=true; var M=G.match, st=ev.stats&&typeof ev.stats==='object'?ev.stats:{}, j;
@@ -8983,7 +9034,7 @@ function netHtml(){
   return '<div class="overlay" id="rlOv"><div class="poster small rl"><h2>PARADE ROYALE</h2>'+
     '<div id="rlMenu"><div class="tag">Twelve hordes. One city. One left standing.</div></div>'+
     '<div class="rlRow" id="rlNameRow"><label for="rlName">Name</label><input id="rlName" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false"></div><div id="rlLook"></div>'+
-    '<div id="rlMenuB"><button class="big" id="rlHost">HOST A MATCH</button><br><button class="mid" id="rlToJoin">JOIN WITH A CODE</button>'+netHowHtml()+'</div>'+
+    '<div id="rlMenuB"><button class="big" id="rlBots">PLAY VS BOTS</button><br><button class="mid" id="rlHost">HOST A MATCH</button><br><button class="mid" id="rlToJoin">JOIN WITH A CODE</button>'+netHowHtml()+'</div>'+
     '<div id="rlJoin"><input id="rlCode" class="rlCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Lobby code"><button class="big" id="rlJoinBtn">JOIN</button></div>'+
     '<div id="rlLobby"><div class="tag">Lobby code</div><div class="rlBig" id="rlCodeBig"></div><button class="mid" id="rlShare">SHARE LINK</button>'+
     '<ul class="rlList" id="rlList"></ul><div id="rlExtra"></div><button class="big" id="rlStart">START</button><div class="tag" id="rlCount"></div></div>'+
@@ -8994,6 +9045,7 @@ function netMount(){
   var el=$('royaleLobby'); if(el&&$('rlOv')) return el;
   el=Royale.mount('royaleLobby',netHtml(),NET_CSS);
   function on(id,fn){ var b=$(id); if(b&&b.addEventListener) b.addEventListener('click',function(e){ if(e&&e.stopPropagation) e.stopPropagation(); Snd.init(); Snd.play('ui'); fn(); }); }
+  on('rlBots',function(){ Royale.net.practice(netReadName(),netSkin(),{tone:netTone()}); });
   on('rlHost',function(){ Royale.net.host(netReadName(),netSkin(),{tone:netTone()}); });
   on('rlToJoin',function(){ netS.screen='join'; netS.msg=''; netRender(); });
   on('rlJoinBtn',netJoinClick);
@@ -9107,7 +9159,16 @@ Royale.net={
       (function go(){ T.open('host',netS.code,function(e){
         if(e==='taken'&&!opts.code&&tries++<5){ netS.code=netCode(tries); return go(); }
         if(e){ netS.role=null; netS.msg=e==='taken'?'That code is in use. Try again.':netServiceMsg(e); netRender(); return; }
-        netS.msg=''; netBind(T); if(!netS.started){ netS.screen='lobby'; netShow(true); } netStartTimer(); netRender(); }); })(); });
+        netS.msg=''; netBind(T); netStartTimer(); if(opts.practice&&!netS.started){ Royale.net.start(); return; } // straight into the match, no lobby
+        if(!netS.started){ netS.screen='lobby'; netShow(true); } netRender(); }); })(); });
+  },
+  /* Play against bots with no lobby service (owner, 28 Oct: a page that cannot reach the signalling server still needs a
+     match): the host runs on an in-page fake transport (no BroadcastChannel, nothing leaves the page), the lobby is skipped,
+     the bots lane fills to the device's count (BOTS_MIN keeps it at two hordes or more) and the match starts at once. AGAIN
+     restarts on the same transport. Nothing here loads PeerJS or probes the relay. */
+  practice:function(name,skin,opts){
+    opts=opts||{}; var hub=netS.pHub||(netS.pHub=netFakeHub(null));
+    opts.transport=netFake(hub,{seed:netMix(3)%9973}); opts.practice=true; Royale.net.host(name,skin,opts);
   },
   join:function(code,name,skin,opts){
     opts=opts||{}; if(netS.role){ Royale.net.leave(); netS.screen='join'; netShow(true); } // a second tap while the first knock runs: start over, panel still up
@@ -9165,14 +9226,14 @@ Royale.net={
    keeps the crown, settles placings and hands the result to core. Every device shows: the drop minimap with its own
    pick, the ring, the fire on whatever stands outside it, the ring timer, the banners. Outcomes roll mrand(); embers
    roll jrand(). */
-var MATCH_DROP_T=10, MATCH_DROP_GAP=600, MATCH_WARN=10, MATCH_SHRINK=20, MATCH_LAST_R=300, MATCH_HEAD_DPS=8,
+var MATCH_END_BEAT=1.2, MATCH_DROP_T=10, MATCH_DROP_GAP=600, MATCH_WARN=10, MATCH_SHRINK=20, MATCH_LAST_R=300, MATCH_HEAD_DPS=8,
   MATCH_BURN_AFTER=1, MATCH_BURN_GAP=0.25, MATCH_GHOST_PCT=0.03, MATCH_CROWN_LEAD=2, MATCH_MAP_PX=280, MATCH_PICK_GAP=0.5,
   MATCH_NEAR_MAX=1500, MATCH_ROOM=110, MATCH_NEAR_TRIES=900, MATCH_FIRE=['#ffcf6b','#ff8a2b','#ff5a1f','#3a2a22'];
-var ROYALE_POP0=80, MATCH_MINI_FROM=30, MATCH_MINI_EVERY=90, MATCH_MINI_MAX=3; // the people from the first minute, and the mini-boss schedule (owner, 18 Oct)
+var ROYALE_POP0=100, ROYALE_GRACE=60, MATCH_MINI_FROM=30, MATCH_MINI_EVERY=90, MATCH_MINI_MAX=3; // the people from the first minute, and the mini-boss schedule (owner, 18 Oct)
 /* Lane-private state, reset by begin(). Nothing here travels in a snapshot: what guests need is on G.match. */
 var matchS=matchFresh();
 function matchFresh(){ return {picks:{},pending:{},pickAt:{},myPick:null,dropT:0,dropSec:-1,plan:[],warned:0,moved:0,o:{x:0,y:0,r:0},cd:{},strayCd:{},sb:{},
-  seenWarn:-1,seenMove:-1,emberT:0,fireT:0,base:null,shown:false,needShow:false,hudY:0,hudAt:-9}; }
+  seenWarn:-1,seenMove:-1,emberT:0,fireT:0,base:null,mini:null,shown:false,needShow:false,hudY:0,hudAt:-9,overtime:false,endAt:0,pill:{txt:'',w:0,step:-1,sec:-1,dir:''}}; }
 function matchHorde(P){ return (G.cur===P?G.segs:P.segs).length; }
 function matchOut(R,x,y){ var dx=x-R.x, dy=y-R.y; return dx*dx+dy*dy>R.r*R.r; }
 /* Free ground: on the map, not in a wall, furniture, hazard or trap, and not inside a shop or courtyard (a refuge can
@@ -9240,11 +9301,11 @@ function matchRoll(x,y,r,tr){
   return best;
 }
 /* Host: move the ring to where the clock says it is. stepT is the seconds to the next shrink (0 while shrinking and after
-   the last); tx/ty/tr are published when a step's warning starts, with one {k:'ring'} event. */
+   the last); tx/ty/tr are published the moment a step begins (the start of its hold, about 40 s before it moves; owner,
+   28 Oct: the ring is a plan you can read, not luck), with one {k:'ring'} event. */
 function matchRing(M){
   var R=M.ring, c=M.clock, P=matchS.plan, S=Math.min(R.steps,P.length);
   while(R.step<S){ var p=P[R.step];
-    if(c<p.warn){ R.stepT=p.start-c; return; }
     if(matchS.warned<=R.step){ matchS.warned=R.step+1; R.tx=p.x; R.ty=p.y; R.tr=p.r; M.events.push({k:'ring',x:Math.round(p.x),y:Math.round(p.y),r:Math.round(p.r),stepT:Math.round((p.start-c)*100)/100}); }
     if(c<p.start){ R.stepT=p.start-c; return; }
     if(matchS.moved<=R.step){ matchS.moved=R.step+1; matchS.o.x=R.x; matchS.o.y=R.y; matchS.o.r=R.r; }
@@ -9292,12 +9353,15 @@ function matchCrown(M){
   if(cur&&cur.alive){ if(best&&best!==cur&&bn>=matchHorde(cur)+MATCH_CROWN_LEAD) M.crown=best.id; return; }
   M.crown=best&&bn>=second+MATCH_CROWN_LEAD?best.id:0;
 }
-/* Host: the last living head wins; at length the survivors place by horde, then eaten, then the lower id. The dead place
-   in reverse order of death, ties by the horde they had when they died (core's stats.hordeAtDeath). */
+/* Host: the last living head wins. The ring reaching nothing at `length` ends nothing (owner, 28 Oct: sudden death, never
+   a clock snapshot): everyone burns on in overtime until one head is left; heads that die in the same frame place by the
+   horde they had when they died (core's stats.hordeAtDeath), then eaten, then the lower id, and so do all the dead, in
+   reverse order of death. Survivors (a match of one) place by horde, then eaten, then the lower id. */
 function matchSettle(M){
   var ps=G.players, n=0, i;
   for(i=0;i<ps.length;i++) if(ps[i].alive) n++;
-  if(M.clock<M.length&&!(ps.length>1&&n<=1)) return;
+  if(ps.length>1?n>1:M.clock<M.length) return;
+  if(ps.length>1){ if(!(matchS.endAt>0)) matchS.endAt=M.clock+MATCH_END_BEAT; if(M.clock<matchS.endAt) return; } // the last kill's beat plays before the end screen (owner, 28 Oct)
   var alive=[], dead=[], out=[];
   for(i=0;i<ps.length;i++) (ps[i].alive?alive:dead).push(ps[i]);
   alive.sort(function(a,b){ return matchHorde(b)-matchHorde(a)||(b.stats.eaten-a.stats.eaten)||(a.id-b.id); });
@@ -9332,7 +9396,7 @@ function matchDropTap(e){
 }
 /* The city in ink on paper: blocks dark, parks green, shops and courtyards that lock in red, the arena dashed. Drawn once
    per match into an offscreen canvas; the pick goes on top. */
-function matchDropBase(S){
+function matchDropBase(S,noRing){
   var cv=document.createElement('canvas'); cv.width=S; cv.height=S; var g=cv.getContext&&cv.getContext('2d'); if(!g) return cv;
   var F=G.F, k=S/F.w, i, Bs=(F.city&&F.city.blocks)||[], Rs=F.refuges||[];
   g.fillStyle='#d8ccae'; g.fillRect(0,0,S,S);
@@ -9340,7 +9404,7 @@ function matchDropBase(S){
   g.fillStyle='#b3202b'; for(i=0;i<Rs.length;i++){ var q=Rs[i].inside; if(q) g.fillRect(q.x*k,q.y*k,Math.max(3,q.w*k),Math.max(3,q.h*k)); }
   var A=F.arena; if(A){ g.fillStyle='rgba(239,231,210,.55)'; g.fillRect(A.x*k,A.y*k,A.w*k,A.h*k); g.strokeStyle='#1c1a24'; g.lineWidth=Math.max(2,S/200);
     if(g.setLineDash) g.setLineDash([S/60,S/90]); g.strokeRect(A.x*k,A.y*k,A.w*k,A.h*k); if(g.setLineDash) g.setLineDash([]); }
-  var R=G.match.ring; g.strokeStyle='rgba(255,90,31,.85)'; g.lineWidth=Math.max(2,S/150); g.beginPath(); g.arc(R.x*k,R.y*k,R.r*k-1,0,TAU); g.stroke();
+  var R=G.match.ring; if(!noRing){ g.strokeStyle='rgba(255,90,31,.85)'; g.lineWidth=Math.max(2,S/150); g.beginPath(); g.arc(R.x*k,R.y*k,R.r*k-1,0,TAU); g.stroke(); }
   return cv;
 }
 function matchDropPaint(){
@@ -9369,6 +9433,7 @@ function matchPresent(M,dt){
     var ex, ey; if(cam&&R.r>1){ var ca=Math.atan2(cam.y-R.y,cam.x-R.x); ex=R.x+Math.cos(ca)*R.r; ey=R.y+Math.sin(ca)*R.r; } Snd.play('ignite',ex,ey); // from the nearest edge
     if(R.step===0) banner(':fire: The ring is closing.');
     else if(R.step===R.steps-1){ banner(':fire: The last circle. It closes to nothing.'); Snd.play('lockdown'); } }
+  if(R.step>=R.steps&&M.clock>=M.length&&!matchS.overtime){ matchS.overtime=true; banner(':fire: Overtime. Last head standing.'); Snd.play('lockdown'); }
   if(!cam) return;
   var vx=W/2+40, vy=H/2+40, burnt=false;
   matchS.fireT+=dt; var tick=matchS.fireT>=0.12; if(tick) matchS.fireT=0; // a few sparks a second off everything in the fire, not every frame
@@ -9399,7 +9464,7 @@ function matchDrawGround(){
     ctx.globalAlpha=0.18+0.1*fl; ctx.strokeStyle='#ff6018'; ctx.lineWidth=40; ctx.beginPath(); ctx.arc(R.x,R.y,R.r+14,0,TAU); ctx.stroke();
     ctx.globalAlpha=0.35+0.15*fl; ctx.strokeStyle='#ffaa3c'; ctx.lineWidth=12; ctx.beginPath(); ctx.arc(R.x,R.y,R.r+4,0,TAU); ctx.stroke();
     ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; ctx.strokeStyle='#ffd27a'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(R.x,R.y,R.r,0,TAU); ctx.stroke(); }
-  if(R.step<R.steps&&R.tr<R.r-1&&R.stepT<=MATCH_WARN){ // the next circle, thin and dashed
+  if(R.step<R.steps&&R.tr<R.r-1){ // the next circle, thin and dashed, from the moment it is known
     ctx.globalAlpha=0.75; ctx.strokeStyle='#efe7d2'; ctx.lineWidth=2; if(ctx.setLineDash) ctx.setLineDash([18,14]);
     if(R.tr>1){ ctx.beginPath(); ctx.arc(R.tx,R.ty,R.tr,0,TAU); ctx.stroke(); }
     else { ctx.beginPath(); ctx.moveTo(R.tx-14,R.ty-14); ctx.lineTo(R.tx+14,R.ty+14); ctx.moveTo(R.tx+14,R.ty-14); ctx.lineTo(R.tx-14,R.ty+14); ctx.stroke(); }
@@ -9414,8 +9479,17 @@ function matchHudBottom(){
   if(!(b>0)) b=84;
   matchS.hudY=b; return b;
 }
-/* Toward the ring's centre while you burn: the engine's off-screen arrow, kept below the HUD rows and the match strip. */
-function matchArrow(wx,wy){
+/* The circle to make for: the next one once it is known (it is always inside the current one), else the current. */
+function matchGoal(R){ return R.step<R.steps&&R.tr<R.r-1?{x:R.tx,y:R.ty,r:R.tr}:{x:R.x,y:R.y,r:R.r}; }
+/* Where the head should go: the nearest point 40 px inside the goal circle, or its centre when the circle is small. */
+function matchSafePoint(R,hx,hy){ var g=matchGoal(R), dx=hx-g.x, dy=hy-g.y, d=Math.hypot(dx,dy), inR=Math.max(0,g.r-40);
+  if(d<=inR||inR<=0) return {x:g.x,y:g.y}; return {x:g.x+dx/d*inR,y:g.y+dy/d*inR}; }
+/* Eight winds from the head to the next circle's centre, for the pill; '' when the next circle holds you. */
+function matchBearing(R,hx,hy){ var g=matchGoal(R); if(Math.hypot(hx-g.x,hy-g.y)<=Math.max(0,g.r-40)) return '';
+  var a=Math.atan2(g.y-hy,g.x-hx), k=Math.round(a/(Math.PI/4)); return ['E','SE','S','SW','W','NW','N','NE'][(k+8)%8]; }
+/* Toward the next circle while you burn, or when it will not hold you and the shrink is near: the engine's off-screen
+   arrow, kept below the HUD rows and the match strip. */
+function matchArrow(wx,wy,word){
   var ex=wx-G.cam.x+W/2, ey=wy-G.cam.y+H/2, top=Math.max(130,matchHudBottom()+60); if(ex>0&&ex<W&&ey>top&&ey<H) return;
   var cx=W/2, cy=H/2, dx=ex-cx, dy=ey-cy, a=Math.atan2(dy,dx), s=1;
   if(dx>0) s=Math.min(s,(W-44-cx)/dx); if(dx<0) s=Math.min(s,(44-cx)/dx); if(dy>0) s=Math.min(s,(H-64-cy)/dy); if(dy<0) s=Math.min(s,(top-cy)/dy);
@@ -9423,16 +9497,15 @@ function matchArrow(wx,wy){
   ctx.save(); ctx.translate(tx,ty); ctx.rotate(a); ctx.scale(pulse,pulse); ctx.fillStyle='#ffb347'; ctx.strokeStyle='#14121a'; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(18,0); ctx.lineTo(-12,-14); ctx.lineTo(-6,0); ctx.lineTo(-12,14); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
   ctx.font='800 12px Rubik,system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.lineWidth=3; ctx.fillStyle='#efe7d2';
-  ctx.strokeText('safe',tx,ty+28); ctx.fillText('safe',tx,ty+28);
+  ctx.strokeText(word,tx,ty+28); ctx.fillText(word,tx,ty+28);
 }
-var MATCH_PILL={txt:'',w:0,step:-1,sec:-1};
 function matchDrawHud(){
-  var M=G.match, R=M.ring, me=G.me, out=me&&me.alive&&G.head&&matchOut(R,G.head.x,G.head.y), Pl=MATCH_PILL;
-  if(out) matchArrow(R.x,R.y);
+  var M=G.match, R=M.ring, me=G.me, hd=me&&me.alive?G.head:null, out=!!(hd&&matchOut(R,hd.x,hd.y)), Pl=matchS.pill, bearing=hd?matchBearing(R,hd.x,hd.y):'';
+  if(hd&&(out||(bearing&&R.stepT<=MATCH_WARN))){ var sp=matchSafePoint(R,hd.x,hd.y); matchArrow(sp.x,sp.y,out?'safe':'ring'); }
   if(R.step>=R.steps) return;
   var sec=R.stepT>0?Math.ceil(R.stepT):0;
   ctx.save(); ctx.font='400 18px Bangers, Impact, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  if(Pl.step!==R.step||Pl.sec!==sec){ Pl.step=R.step; Pl.sec=sec; Pl.txt=sec>0?'RING MOVES '+fmt(sec):'RING CLOSING'; Pl.w=Math.ceil(ctx.measureText(Pl.txt).width||110)+22; }
+  if(Pl.step!==R.step||Pl.sec!==sec||Pl.dir!==bearing){ Pl.step=R.step; Pl.sec=sec; Pl.dir=bearing; Pl.txt=(sec>0?'RING MOVES '+fmt(sec):'RING CLOSING')+(bearing?' · '+bearing:''); Pl.w=Math.ceil(ctx.measureText(Pl.txt).width||110)+22; }
   var w=Pl.w, h=26, x=W-w-12, y=matchHudBottom()+8;
   ctx.fillStyle=out?'#b3202b':'#0f0d14'; ctx.globalAlpha=out?1:0.8; ctx.strokeStyle=out?'#1c1a24':'#ff8a2b'; ctx.lineWidth=2; rr(x,y,w,h,h/2); ctx.fill(); ctx.globalAlpha=1; ctx.stroke();
   ctx.fillStyle=!out&&sec===0?'#ffb347':'#efe7d2'; ctx.fillText(Pl.txt,x+w/2,y+h/2+1);
@@ -9478,12 +9551,14 @@ Royale.match={
     M.phase='play'; M.clock=0; M.events.push({k:'phase',phase:'play'}); matchDropHide();
   },
   /* The people's minute: Rampage's 12-minute curve squeezed into the match (core's royalePeopleMin() reads it). */
-  peopleMin:function(){ var M=G.match; return M?M.clock/60*12/(M.length/60):0; },
+  /* ROYALE_GRACE (owner, 28 Oct: more basic people at the start): the people's clock stands still for the first minute,
+     then runs the 12-minute curve over what is left of the match, so the opening is unarmed crowds and nothing else. */
+  peopleMin:function(){ var M=G.match; return M?Math.max(0,M.clock-ROYALE_GRACE)/60*12/((M.length-ROYALE_GRACE)/60):0; },
   /* Rampage's population rule on that minute (what rampPop() gives through rampMin()). */
-  popTarget:function(){ return Math.min(RAMP_POP_MAX,ROYALE_POP0+RAMP_POP_PER*Math.floor(Royale.match.peopleMin())); }, // rampPop() reads it in a match: more food from the first minute (owner, 18 Oct)
+  popTarget:function(){ return Math.min(RAMP_POP_MAX,ROYALE_POP0+RAMP_POP_PER*Math.floor(Royale.match.peopleMin())); }, // rampPop() reads it in a match: more food from the first minute (owner, 18 Oct; 100 from 28 Oct)
   /* City mini bosses in a match (ROYALE.md §4.3; owner, 18 Oct: "drop mini bosses early"): the first from 0:30, one more every 90 s, three at most; cityKeepUp spawns them near a random living head. Ghosts are not counted. */
   minisWanted:function(){ var M=G.match; if(!M||M.phase!=='play'||M.clock<MATCH_MINI_FROM) return 0; return Math.min(MATCH_MINI_MAX,1+Math.floor((M.clock-MATCH_MINI_FROM)/MATCH_MINI_EVERY)); },
-  plan:function(){ return matchS.plan; },
+  plan:function(){ return matchS.plan; }, bearing:matchBearing, safePoint:matchSafePoint, goal:matchGoal,
   update:function(dt){
     var M=G.match; if(!M) return;
     if(M.phase==='drop'){ if(matchS.needShow){ matchS.needShow=false; matchDropShow(); } matchS.dropT-=dt; matchDropTick();
@@ -9503,13 +9578,19 @@ Royale.match={
 };
 /* ---------- Parade Royale: fights (lane D; ROYALE.md §4.1 is the contract) ---------- */
 /* Hordes against hordes with the game's own snake rules. Host only, once a frame after the engine's passes (G.me bound):
-   a head on a rival's zombie cuts that line there and takes every second stray it made; a head passes over its own line
+   a head driven at speed onto a rival's zombie ahead of it cuts that line there and takes every second stray it made
+   (the duel, owner 28 Oct: a cut is a blow, never a graze; the same pair cannot cut again for FIGHTS_BITE_GAP; the cut
+   horde is staggered, core's STAGGER_*; the other half of the cut stands dazed for CUT_CLAIM_T, the victim's or the
+   biter's to take; a braced line, core's BRACE_*, loses one zombie and never breaks); a head passes over its own line
    (owner, 20 Oct: no self-cuts in a match); two heads meet and both bounce, nobody eaten whole, each shedding zombies from
-   the tail and HP by how outsized it is (the smaller takes more). A player whose horde stays at zero for FIGHTS_ZERO_T
-   dies. The map holds G.match.cap zombies (mobs plus strays): at the cap eat() adds no zombie and a stray that would push
+   the tail and HP by how outsized it is (the smaller takes more, and is staggered). A player whose horde stays at zero for
+   FIGHTS_ZERO_T dies. The map holds G.match.cap zombies (mobs plus strays): at the cap eat() adds no zombie and a stray that would push
    past it is never made. The detection allocates nothing: numbers in typed arrays made at the match's start, plain loops,
    a box per mob before any per-zombie test. */
-var FIGHTS_BITE_GAP=0.5,    // seconds before the same biter and line can cut again: one pass through a line is one cut
+var FIGHTS_BITE_GAP=2.5,    // seconds before the same biter and line can cut again: a blow, then its aftermath, never a flurry (owner, 28 Oct; was 0.5)
+    FIGHTS_BITE_MIN_V=0.45, // a bite needs intent: the biter's head moving at this share of its top speed or more
+    FIGHTS_BITE_CONE=100,   // ...with the zombie inside this cone (degrees) ahead of the head: a still head, or one grazed from behind, bites nothing
+    CUT_CLAIM_T=3,          // seconds a cut's dazed half stands where it fell for the victim or the biter alone
     FIGHTS_MEET_GAP=1,      // seconds before the same two heads collide again
     FIGHTS_PUSH=30,         // each head is pushed this far back on a bounce (60 px apart)
     FIGHTS_PUSH_STEP=6,     // in steps this long, each through resolveHead, so a wall holds
@@ -9522,6 +9603,7 @@ var FIGHTS_BITE_GAP=0.5,    // seconds before the same biter and line can cut ag
     FIGHTS_CLASH_HP=6, FIGHTS_CLASH_HP_MIN=3, FIGHTS_CLASH_HP_MAX=24,
     FIGHTS_ZERO_T=1.2,      // seconds at zero before a horde is out: long enough to grab back a fresh stray (joinT 0.8 s)
     FIGHTS_CREDIT_T=1.5;    // a rival who took the last zombie this long before the death gets the kill
+var fightsConeCos=Math.cos(FIGHTS_BITE_CONE/2*Math.PI/180);
 /* Every number the detection writes lives in a typed array (a plain var holding a fraction would box a new number every
    frame), sized at the match's start by the largest player id. fightsClk[0] is the fights clock in seconds. Who took a
    player's last zombie: fightsLost = 0 nobody/anything else, 1 the ring, 2 a rival (fightsLostBy), at fightsLostAt. */
@@ -9555,20 +9637,22 @@ function fightsPeak(P){ var n=G.segs.length; if(n>G.peakMob) G.peakMob=n; if(n>P
 /* P's head bites Q's zombie i: Q's line breaks there; every second stray it made joins P through the engine's rejoin.
    Strays are made in line order, so "every second" is by index from the first. */
 function fightsBite(P,Q,i){
-  var was=G.cur, k, n=0;
+  var was=G.cur, k, n=0, surging=(P===G.cur?G.surgeT:P.surgeT)>0;
   bindPlayer(Q);
-  var n0=G.strays.length, before=G.segs.length;
+  var n0=G.strays.length, before=G.segs.length, held=G.braceT>0, slimed=G.bileT>0, all=surging||slimed; // the whole cut comes over (ROYALE.md §15): a surging biter, or a slimed line
   fightsActor=P.id; removeSeg(i,'bite'); fightsActor=0;
   var cut=before-G.segs.length, n1=G.strays.length;
+  if(cut>1) stagger(); // the line broke: the victim's head slows (owner, 28 Oct); a nibble at the tail or a braced line is no blow
   bindPlayer(P);
-  for(k=n0;k<n1;k+=2){ var s=G.strays[k]; if(s&&!s.dead){ rejoin(s); n++; } }
+  for(k=n0;k<n1;k+=all?1:2){ var s=G.strays[k]; if(s&&!s.dead){ rejoin(s); n++; } }
   fightsPeak(P);
-  if(P===G.me) stamp(n?'CUT ×'+n:'CUT',n>=10?3:2,G.head.x,G.head.y); // one word over the biter's head, on the biter's screen
+  if(P===G.me) stamp(held?'HELD':n?'CUT ×'+n:'CUT',n>=10?3:2,G.head.x,G.head.y); // one word over the biter's head, on the biter's screen
   bindPlayer(was);
   var bo=fightsMap(P.stats,'bitesOn'), fb=fightsMap(P.stats,'firstBite');
   P.stats.bites++; bo[Q.id]=(bo[Q.id]||0)+1; P.stats.taken+=n; P.stats.dmgTo[Q.id]=(P.stats.dmgTo[Q.id]||0)+n; Q.stats.lost+=cut;
   if(n&&fb[Q.id]===undefined) fb[Q.id]=G.match.clock; // the nemesis tie-break: who started it
-  G.match.events.push({k:'bite',by:P.id,of:Q.id,n:n});
+  var ev={k:'bite',by:P.id,of:Q.id,n:n,lost:cut,held:held?1:0}; G.match.events.push(ev);
+  if(Royale.ui&&Royale.ui.blow) Royale.ui.blow(ev); // the duel strip and the victim's word, on the host's own screen
 }
 /* Head-on: how outsized `own` is against `other` (both at least 1), and the share that costs it. */
 function fightsClashD(own,other){ return Math.max(FIGHTS_CLASH_D_MIN,Math.min(FIGHTS_CLASH_D_MAX,Math.max(1,other)/Math.max(1,own))); }
@@ -9585,8 +9669,8 @@ function fightsMeet(A,B){
   var na=fightsSegs(A).length, nb=fightsSegs(B).length;
   var ha=headOf(A), hb=headOf(B), dx=ha.x-hb.x, dy=ha.y-hb.y, d=Math.sqrt(dx*dx+dy*dy);
   var ux=d>0.001?dx/d:Math.cos(ha.h+Math.PI), uy=d>0.001?dy/d:Math.sin(ha.h+Math.PI), ang=Math.atan2(uy,ux);
-  fightsBounce(A,ux,uy,B,fightsClashZombies(na,nb),fightsClashHp(na,nb));
-  fightsBounce(B,-ux,-uy,A,fightsClashZombies(nb,na),fightsClashHp(nb,na));
+  fightsBounce(A,ux,uy,B,fightsClashZombies(na,nb),fightsClashHp(na,nb),nb>na);
+  fightsBounce(B,-ux,-uy,A,fightsClashZombies(nb,na),fightsClashHp(nb,na),na>nb);
   fightsBounced[A.id]=fightsBounced[B.id]=fightsFrame;
   G.match.events.push({k:'bounce',a:A.id,b:B.id});
   ha=headOf(A); hb=headOf(B);
@@ -9597,13 +9681,13 @@ function fightsMeet(A,B){
    environmental, like the ring's (ROYALE.md §4.1, §4.2): straight off G.hp with P bound, never through hurt, skipped only
    while reviving; a clash that kills is 'eaten' by the rival, and core's death check at the end of the frame does the
    rest. */
-function fightsBounce(P,ux,uy,by,k,hp){
+function fightsBounce(P,ux,uy,by,k,hp,small){
   var was=G.cur; bindPlayer(P);
   var hd=G.head, F=G.F, left=FIGHTS_PUSH, st, ox=hd.x, oy=hd.y;
   while(left>0){ st=Math.min(FIGHTS_PUSH_STEP,left); left-=st; hd.x+=ux*st; hd.y+=uy*st; resolveHead(hd,F,1/60); }
   fightsTrail(ox,oy,ux,uy);
   var n0=G.segs.length; fightsActor=by.id; for(var q=0;q<k&&G.segs.length;q++) removeSeg(G.segs.length-1,'bounce'); fightsActor=0;
-  var shed=n0-G.segs.length; P.stats.lost+=shed;
+  var shed=n0-G.segs.length; P.stats.lost+=shed; if(small&&shed>0) stagger(); // the smaller side of a clash is knocked off its stride too
   // what a clash sheds is damage done by the rival (the nemesis is argmax dmgTo, ROYALE.md §2), as a bite's zombies are
   if(shed>0&&by!==P&&by.alive){ by.stats.dmgTo[P.id]=(by.stats.dmgTo[P.id]||0)+shed;
     var fb=fightsMap(by.stats,'firstBite'); if(fb[P.id]===undefined) fb[P.id]=G.match.clock; }
@@ -9646,7 +9730,7 @@ function fightsZeroDie(P){
 function fightsUpdate(dt){
   var M=fightsHost(); if(!M||M.phase!=='play') return;
   fightsClk[0]+=dt; fightsFrame++;
-  var T=fightsClk[0], ps=G.players, np=ps.length, a, b, i, P, Q, hp, hq, segs, n, s, r, R, dx, dy, d2, best, bi, key, N;
+  var T=fightsClk[0], ps=G.players, np=ps.length, a, b, i, P, Q, hp, hq, segs, n, s, r, R, dx, dy, d2, best, bi, key, N, vx, vy, top, ch, sh;
   for(a=0;a<np;a++) if(ps[a].id>=fightsN) fightsAlloc(ps[a].id+1); // an id past the arrays mid-match: fresh guards, the clock runs on
   N=fightsN;
   // a box round every mob in the fight, from where its zombies stand right now
@@ -9655,7 +9739,7 @@ function fightsUpdate(dt){
     fightsBx0[P.id]=x0; fightsBy0[P.id]=y0; fightsBx1[P.id]=x1; fightsBy1[P.id]=y1; }
   // heads meet (each pair once, lower index first; a head bounces once a frame)
   for(a=0;a<np;a++){ P=ps[a]; if(fightsOut(P)) continue;
-    for(b=a+1;b<np;b++){ Q=ps[b]; if(fightsOut(Q)||fightsOut(P)) continue;
+    for(b=a+1;b<np;b++){ Q=ps[b]; if(fightsOut(Q)||fightsOut(P)) continue; if(fightsAllied(P,Q)) continue; // allies pass through each other (§17)
       hp=headOf(P); hq=headOf(Q); R=hp.r+hq.r; dx=hp.x-hq.x; dy=hp.y-hq.y;
       if(dx>R||dx<-R||dy>R||dy<-R||dx*dx+dy*dy>=R*R) continue;
       if(fightsBounced[P.id]===fightsFrame||fightsBounced[Q.id]===fightsFrame) continue;
@@ -9664,13 +9748,17 @@ function fightsUpdate(dt){
       fightsMeetAt[key]=T; fightsMeet(P,Q); } }
   // a head on a rival's line: the touched zombie nearest the head is the one bitten
   for(a=0;a<np;a++){ P=ps[a]; if(fightsOut(P)) continue;
-    for(b=0;b<np;b++){ Q=ps[b]; if(b===a||fightsOut(Q)||fightsOut(P)) continue;
+    for(b=0;b<np;b++){ Q=ps[b]; if(b===a||fightsOut(Q)||fightsOut(P)) continue; if(fightsAllied(P,Q)) continue;
       key=P.id*N+Q.id; if(T-fightsBiteAt[key]<FIGHTS_BITE_GAP) continue;
       hp=headOf(P); r=hp.r+SEG_R;
       if(hp.x<fightsBx0[Q.id]-r||hp.x>fightsBx1[Q.id]+r||hp.y<fightsBy0[Q.id]-r||hp.y>fightsBy1[Q.id]+r) continue;
+      // intent: the biter is driving (its head's real velocity this frame, so a stagger or a let-go counts) and the zombie lies ahead of it
+      vx=hp.vx||0; vy=hp.vy||0; top=P===G.cur?G.st:P.st; top=top&&top.speed?top.speed:170;
+      if(vx*vx+vy*vy<FIGHTS_BITE_MIN_V*FIGHTS_BITE_MIN_V*top*top) continue;
+      ch=Math.cos(hp.h); sh=Math.sin(hp.h);
       segs=fightsSegs(Q); n=segs.length; best=r*r; bi=-1;
       for(i=0;i<n;i++){ s=segs[i]; dx=s.x-hp.x; dy=s.y-hp.y;
-        if(dx<r&&dx>-r&&dy<r&&dy>-r){ d2=dx*dx+dy*dy; if(d2<best){ best=d2; bi=i; } } }
+        if(dx<r&&dx>-r&&dy<r&&dy>-r){ d2=dx*dx+dy*dy; if(d2<best&&dx*ch+dy*sh>=fightsConeCos*Math.sqrt(d2)){ best=d2; bi=i; } } }
       if(bi>=0){ fightsBiteAt[key]=T; fightsBite(P,Q,bi); } } }
   // horde zero: a living head with no zombies for FIGHTS_ZERO_T on end is out
   for(a=0;a<np;a++){ P=ps[a]; if(fightsOut(P)) continue; if(fightsSegs(P).length){ fightsZeroT[P.id]=0; continue; }
@@ -9690,10 +9778,37 @@ function fightsOnSegLost(P,seg,cause,i){ var M=fightsHost(); if(!M) return;
 /* At the cap, a stray that adds a zombie to the map is never made. A cut or a death only turns a mob zombie into a stray
    (removeSeg and royaleDie take it off the line before making its stray), so the count never rises past the running
    total for those and they always happen; a stray from nowhere (a person turned, a summon) is refused. */
-function fightsOnStray(s,P){ var M=fightsHost(); if(!M||!M.full) return; var c=fightsCount();
+function fightsOnStray(s,P){ var M=fightsHost(); if(!M) return;
+  if(fightsActor&&P&&fightsActor!==P.id){ s.claim0=P.id; s.claim1=fightsActor; s.claimT=CUT_CLAIM_T; } // a cut's dazed half: the victim's or the biter's
+  if(!M.full) return; var c=fightsCount();
   if(c>M.cap&&c>fightsTotal){ s.dead=true; return; } if(c>fightsTotal) fightsTotal=c; }
 
-Royale.fights={update:fightsUpdate,onEat:fightsOnEat,onSegLost:fightsOnSegLost,onStray:fightsOnStray,
+/* A stray stands dazed as a cut's half does, claimed by `victim` and `taker` (a Roar's spoils, ROYALE.md §15). */
+function fightsClaim(s,victim,taker){ s.claim0=victim.id; s.claim1=taker.id; s.claimT=CUT_CLAIM_T; return s; }
+function fightsAllied(P,Q){ return !!(Royale.truce&&Royale.truce.allied(P,Q)); }
+/* Who may take a dazed stray right now: its victim or its biter, alive, within reach and in sight; else null. */
+function fightsClaimant(st){ var F=G.F, ids=[st.claim0,st.claim1], k;
+  for(k=0;k<2;k++){ var P=playerById(ids[k]); if(!P||!P.alive) continue; var h=headOf(P), r=h.r+55;
+    if(Math.abs(st.x-h.x)<r&&Math.abs(st.y-h.y)<r&&Math.hypot(st.x-h.x,st.y-h.y)<r&&!solidHit(F,st.x,st.y,h.x,h.y)) return P; }
+  return null; }
+/* On the wire (ROYALE.md §6.5): every living player's stagger, brace and brace cooldown in tenths (p), and the dazed strays near
+   the guest as x, y, the victim's id, the biter's id (d), so a guest predicts its own slowed head and draws every arc and ring. */
+var FIGHTS_PACK_R=1500, FIGHTS_PACK_N=24, fightsDazedNet=[];
+function fightsPack(Pg){ var M=G.match; if(!M||!M.host||!Pg) return null; var ps=G.players||[], p=[], d=[], hd=headOf(Pg), i, P, o;
+  for(i=0;i<ps.length;i++){ P=ps[i]; if(!P.alive) continue; o=P===G.cur?G:P;
+    if(o.staggerT>0||o.braceT>0||o.braceCd>0||o.bileT>0) p.push(P.id,Math.ceil((o.staggerT||0)*10),Math.ceil((o.braceT||0)*10),Math.ceil((o.braceCd||0)*10),Math.ceil((o.bileT||0)*10)); }
+  var ss=G.strays; for(i=0;i<ss.length&&d.length<FIGHTS_PACK_N*4;i++){ var s=ss[i]; if(s.dead||!(s.claimT>0)) continue;
+    if(Math.abs(s.x-hd.x)<FIGHTS_PACK_R&&Math.abs(s.y-hd.y)<FIGHTS_PACK_R) d.push(Math.round(s.x),Math.round(s.y),s.claim0|0,s.claim1|0); }
+  return p.length||d.length?{p:p,d:d}:null; }
+function fightsUnpack(v){ var M=G.match; if(!M||M.host) return; var ps=G.players||[], i, P, o;
+  for(i=0;i<ps.length;i++){ P=ps[i]; o=P===G.cur?G:P; o.staggerT=0; o.braceT=0; o.braceCd=0; o.bileT=0; }
+  fightsDazedNet.length=0; if(!v||typeof v!=='object') return; var p=Array.isArray(v.p)?v.p:[], d=Array.isArray(v.d)?v.d:[];
+  for(i=0;i+4<p.length&&i<ROYALE_MAX*5;i+=5){ P=playerById(p[i]); if(!P) continue; o=P===G.cur?G:P;
+    if(isFinite(p[i+1])) o.staggerT=Math.max(0,p[i+1])/10; if(isFinite(p[i+2])) o.braceT=Math.max(0,p[i+2])/10; if(isFinite(p[i+3])) o.braceCd=Math.max(0,p[i+3])/10; if(isFinite(p[i+4])) o.bileT=Math.max(0,p[i+4])/10; }
+  for(i=0;i+3<d.length&&i<FIGHTS_PACK_N*4;i+=4) if(isFinite(d[i])&&isFinite(d[i+1])) fightsDazedNet.push(d[i],d[i+1],d[i+2]|0,d[i+3]|0); }
+
+Royale.fights={update:fightsUpdate,onEat:fightsOnEat,onSegLost:fightsOnSegLost,onStray:fightsOnStray,claimant:fightsClaimant,claim:fightsClaim,
+  pack:fightsPack,unpack:fightsUnpack,dazed:function(){ return fightsDazedNet; },
   total:function(){ return fightsTotal; },count:fightsCount};
 /* ---------- Parade Royale: ghosts (lane E; ROYALE.md §7, docs/royale/briefs/E-ghosts.md) ---------- */
 /* Nobody sits out. A dead player waits 10 s (the first time, a 3 s stand-in card), then comes back
@@ -9702,9 +9817,14 @@ Royale.fights={update:fightsUpdate,onEat:fightsOnEat,onSegLost:fightsOnSegLost,o
    the ring (lane C) or the survivors' bites put them down, and whoever lands the killing bite gets half a life back.
    Host-only simulation; every device draws the pad and its own stand-in card. Outcome rolls are mrand(); particles jrand(). */
 (function(){
-var GHOST_WAIT=10, GHOST_AD_T=3, GHOST_STAGE=9, GHOST_OUT=200, GHOST_TURN=8, GHOST_CORPSE=8;
+var GHOST_WAIT=10, GHOST_AD_T=3, GHOST_STAGE=9, GHOST_OUT=200, GHOST_TURN=12, GHOST_CORPSE=8;
+/* Owner, 28 Oct: the dead player's mini boss (never "ghost" to the player) moves a lot faster (GHOST_DRIVE_MUL of the nearest
+   head's pace), strikes far more liberally (cooldowns run GHOST_ATK_RATE times faster, wind-ups GHOST_WIND of the mini's)
+   and summons heavily armed people, not zombies: SUMMON_N of them, SUMMON_TIERS up the Rampage arms table, SUMMON_T on the
+   street, every SUMMON_CD. */
+var GHOST_DRIVE_MUL=1.0, GHOST_ATK_RATE=3, GHOST_WIND=0.5;
 var GHOST_KINDS=['manager','champ','director'], GHOST_LABEL={manager:'SWING',champ:'POUND',director:'LOB'};
-var SUMMON_N=3, SUMMON_T=6, SUMMON_CD=12, SUMMON_SP=165, SUMMON_HP=4, SUMMON_PROF={manager:'intern',champ:'gymbro',director:'labtech'};
+var SUMMON_N=5, SUMMON_T=12, SUMMON_CD=10, SUMMON_TIERS=2, SUMMON_R=70;
 var CAM_KILLER=2, PAD_TAP=150;
 
 var gm=null, gq={}, seen={}, gone={}, order=null, kindN=0, cam={by:0,t:0,on:false,x:0,y:0}, camPt={x:0,y:0};
@@ -9776,8 +9896,8 @@ function ghostsInput(P,m){
   var b=P.input||{}; inp.a=b.a?1:0; inp.b=b.b?1:0;
   return inp;
 }
-/* The mini's own pace, as its AI moves it: 0.55 of the nearest living head's speed. */
-function ghostsSpeed(m){ var Q=nearestPlayer(m.x,m.y,true), st=Q?stOf(Q):null; return (st&&st.speed?st.speed:170)*0.55; }
+/* Driven, the boss keeps pace with the nearest living head (owner, 28 Oct: a lot faster; its own AI walks at 0.55), and its reach and summons do the rest. */
+function ghostsSpeed(m){ var Q=nearestPlayer(m.x,m.y,true), st=Q?stOf(Q):null; return (st&&st.speed?st.speed:170)*GHOST_DRIVE_MUL; }
 
 /* Button A: the nearest living head inside this boss's reach gets the single-player tell, then the hit. */
 function ghostsReach(m,Q){ var hd=headOf(Q), d=Math.hypot(hd.x-m.x,hd.y-m.y);
@@ -9789,9 +9909,9 @@ function ghostsStrike(m){
   for(i=0;i<ps.length;i++){ if(!ps[i].alive) continue; var d=ghostsReach(m,ps[i]); if(d>=0&&d<bd){ bd=d; best=ps[i]; } }
   if(!best) return false;
   var hd=headOf(best); m.gTgt=best.id;
-  if(m.kind==='manager'){ m.face=m.h=Math.atan2(hd.y-m.y,hd.x-m.x); miniWindup(m,'swing',0.55); }
-  else if(m.kind==='champ') miniWindup(m,'pound',0.8);
-  else { miniWindup(m,'lob',0.6); m.tx=hd.x; m.ty=hd.y; m.face=m.h=Math.atan2(hd.y-m.y,hd.x-m.x); }
+  if(m.kind==='manager'){ m.face=m.h=Math.atan2(hd.y-m.y,hd.x-m.x); miniWindup(m,'swing',0.55*GHOST_WIND); }
+  else if(m.kind==='champ') miniWindup(m,'pound',0.8*GHOST_WIND);
+  else { miniWindup(m,'lob',0.6*GHOST_WIND); m.tx=hd.x; m.ty=hd.y; m.face=m.h=Math.atan2(hd.y-m.y,hd.x-m.x); }
   return true;
 }
 function ghostsWindup(m,P,dt){
@@ -9802,44 +9922,24 @@ function ghostsWindup(m,P,dt){
   if(m.t>=m.dur) ghostsHit(P,Q,function(){ miniStrike(m); });
 }
 
-/* Button B: three of the boss's own zombies at its feet; they belong to nobody (from 0) and are never collected. */
+/* Button B: SUMMON_N heavily armed people round the boss, SUMMON_TIERS up the Rampage arms table, pressing the nearest
+   living head for SUMMON_T, then gone. People, not zombies (owner, 28 Oct): the normal AI runs them, so they can be eaten. */
+function ghostsArm(){ var m=rampMin(), i, k=0; for(i=0;i<RAMP_ARMS.length;i++) if(m>=RAMP_ARMS[i][0]) k=i; return pickW(RAMP_ARMS[Math.min(RAMP_ARMS.length-1,k+SUMMON_TIERS)][1]); }
 function ghostsSummon(m,P){
-  if(G.match.full||ghostsOnMap()+SUMMON_N>(G.match.cap||ROYALE_CAP)) return false; // the map cap (ROYALE.md §4.1): no stray past it
-  var F=G.F, ty=PROF[SUMMON_PROF[m.kind]]||PROF.intern, id=SUMMON_PROF[m.kind]||'intern', k;
+  var F=G.F, k, made=0, id=++G.squadN, Q=nearestPlayer(m.x,m.y,true), hd=Q?headOf(Q):null;
   P.ghost.cd=SUMMON_CD;
-  for(k=0;k<SUMMON_N;k++){ var a=m.face+(k-1)*2.1, tx=m.x+Math.cos(a)*(m.r+6), ty2=m.y+Math.sin(a)*(m.r+6);
-    var st={id:id,ty:ty,skin:HUMAN_SKINS[k%HUMAN_SKINS.length],hair:HAIRS[(k*2)%HAIRS.length],from:0,hostile:P.id,summonT:SUMMON_T,x:m.x,y:m.y,h:a,hp:2,walk:jrand()*TAU,ph:jrand()*TAU,bt:0,moving:true,dead:false,wt:0,docile:false,eruptT:0};
-    wallStep(st,tx,ty2,F); resolve(st,SEG_R-2,F); G.strays.push(st); }
-  Snd.play('rage',m.x,m.y); fxParts(m.x,m.y,14,['#cfd8dc','#8fd14f','#efe7d2'],0.9);
-  return true;
+  for(k=0;k<SUMMON_N;k++){ var a=m.face+(k/SUMMON_N)*TAU, q=freeNear(F,m.x+Math.cos(a)*SUMMON_R,m.y+Math.sin(a)*SUMMON_R,HUMAN_R+2); if(!q) continue;
+    var h=spawnHuman(false,cityProf(),{x:q.x,y:q.y,exact:true}); if(!h) continue; made++;
+    armHuman(h,ghostsArm()); h.alertT=8; h.born=0; h.city=true; h.squad=id; h.tac='press'; h.tacSide=k%2?1:-1; h.home={x:q.x,y:q.y}; h.summon=P.id; h.summonT=SUMMON_T;
+    if(hd) h.h=h.face=Math.atan2(hd.y-q.y,hd.x-q.x); }
+  if(made) (G.squadSz||(G.squadSz={}))[G.stage+':'+id]=made;
+  Snd.play('alarm',m.x,m.y); fxParts(m.x,m.y,14,['#cfd8dc','#ff5a66','#efe7d2'],0.9);
+  return made>0;
 }
-function ghostsOnMap(){ var n=0, ps=G.players, i; for(i=0;i<ps.length;i++) if(ps[i].alive) n+=segsOf(ps[i]).length; for(i=0;i<G.strays.length;i++) if(!G.strays[i].dead) n++; return n; }
-function ghostsFall(st){ st.dead=true; fxParts(st.x,st.y,8,['#cfd8dc',ZSKIN],0.8); }
-/* A summoned zombie that reaches a living line bites one zombie off it; one that reaches the head takes 4 HP. Then it falls. */
-function ghostsBite(st){
-  var ps=G.players, P=playerById(st.hostile), R=SEG_R*2+2, i, j;
-  if(!P) return false;
-  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(!Q.alive) continue;
-    var b=boxOf(Q), sg=segsOf(Q), hit=-1;
-    if(b&&st.x>b.x0-R&&st.x<b.x1+R&&st.y>b.y0-R&&st.y<b.y1+R){ for(j=0;j<sg.length;j++){ var s=sg[j], dx=s.x-st.x, dy=s.y-st.y; if(dx>-R&&dx<R&&dy>-R&&dy<R&&dx*dx+dy*dy<R*R){ hit=j; break; } } }
-    if(hit>=0){ ghostsHit(P,Q,function(){ removeSeg(hit,'ghost'); }); ghostsFall(st); return true; }
-    var hd=headOf(Q); if(Math.hypot(hd.x-st.x,hd.y-st.y)<hd.r+SEG_R+2){ ghostsHit(P,Q,function(){ hurt(SUMMON_HP); }); ghostsFall(st); return true; } }
-  return false;
-}
-/* Summoned zombies (updateStrays leaves hostile strays to this lane) run at the nearest living head. */
+/* The summoned people leave when their time is up (quietly, out of the fight). */
 function ghostsSummons(dt){
-  var F=G.F, ss=G.strays, i;
-  for(i=0;i<ss.length;i++){ var st=ss[i]; if(!st.hostile||st.dead) continue;
-    st.summonT-=dt; if(st.summonT<=0){ ghostsFall(st); continue; }
-    var Q=G.match.phase==='play'?nearestPlayer(st.x,st.y,true):null;
-    if(Q){ var hd=headOf(Q), go=solidHit(F,st.x,st.y,hd.x,hd.y)?cityWaypoint(F,st.x,st.y,hd.x,hd.y,st):hd, dx=go.x-st.x, dy=go.y-st.y, d=Math.hypot(dx,dy);
-      if(d>1){ st.h=Math.atan2(dy,dx); var step=Math.min(d,SUMMON_SP*dt); wallStep(st,st.x+dx/d*step,st.y+dy/d*step,F); st.moving=true; st.walk+=step*0.1; } else st.moving=false;
-      resolve(st,SEG_R-2,F); }
-    else st.moving=false;
-    if(Q) ghostsBite(st);
-  }
+  var hs=G.humans, i; for(i=0;i<hs.length;i++){ var h=hs[i]; if(!h.summon||h.dead) continue; h.summonT-=dt; if(h.summonT<=0){ h.dead=true; fxParts(h.x,h.y,8,['#cfd8dc','#8a8296'],0.8); } }
 }
-
 /* The bound player's hit on a ghost; if it is the one that puts it down, that player gets half a life back, counted from
    their health before the hit (so an engine that also heals in defeatMini cannot pay it twice). */
 function ghostsHeal(before){ G.hp=Math.min(G.st.maxHp,before+Math.round(G.st.maxHp*MINI_HEAL)); chipsDirty=true; }
@@ -9869,7 +9969,7 @@ function ghostsChew(m,dt){
 function ghostsUpdateMini(m,dt){
   var P=m.ghost, g=P&&P.ghost; if(!g||g.m!==m) return;
   var F=G.F, was=G.cur, M=G.match, play=!!M&&M.phase==='play', i;
-  m.t+=dt; m.atkCd=Math.max(0,m.atkCd-dt); m.flash=Math.max(0,m.flash-dt);
+  m.t+=dt; m.atkCd=Math.max(0,m.atkCd-dt*GHOST_ATK_RATE); m.flash=Math.max(0,m.flash-dt); // driven: strikes three times as often
   if(m.slowT>0){ m.slowT-=dt; if(m.slowT<=0){ m.slowT=0; m.slowMul=1; } }
   for(i=m.lobs.length-1;i>=0;i--){ var L=m.lobs[i]; L.t+=dt; if(L.t>=L.dur){ m.lobs.splice(i,1); ghostsHit(P,nearestPlayer(L.x,L.y,true),ghostsLand(m,L)); } }
   if(play) ghostsChew(m,dt); // outside 'play' nobody is hurt (matchLive)
@@ -10178,7 +10278,13 @@ function botsFleeDir(x,y,r,ux,uy){ var F=G.F, best=-2, ba=Math.atan2(uy,ux), k, 
 /* The ring: once a target circle is published the bot plans for it, else for the circle it stands in. The margin is
    70 px on the full map and grows as the circle shrinks (about 170 px at a quarter of it), never past half the radius. */
 function botsMargin(r){ return r<=0?0:Math.min(r*0.45,70+150*(1-Math.min(1,r/3300))); }
-function botsSafe(S){ var R=G.match.ring, warn=R.tr<R.r-0.5, cr=warn?R.tr:R.r;
+/* The next circle is published about 40 s ahead (28 Oct). A bot commits to it at the 10 s warning as before, and earlier the
+   further it stands from it, as a player reading the ring pill would: the way in at half pace (a staggered, slimed or scrummed
+   head runs at 0.55-0.65), up to BOTS_RING_EARLY sooner. */
+var BOTS_RING_EARLY=25, BOTS_RING_PACE=0.5;
+function botsSafe(S,x,y,sp){ var R=G.match.ring, lead=MATCH_WARN;
+  if(x!==undefined&&R.tr<R.r-0.5){ var dOut=Math.hypot(x-R.tx,y-R.ty)-(R.tr-botsMargin(R.tr)); if(dOut>0) lead+=Math.min(BOTS_RING_EARLY,dOut/((sp||170)*BOTS_RING_PACE)); }
+  var warn=R.tr<R.r-0.5&&R.stepT<=lead, cr=warn?R.tr:R.r;
   S.cx=warn?R.tx:R.x; S.cy=warn?R.ty:R.y; S.sr=Math.max(0,cr-botsMargin(cr)); }
 /* Goals (food, prey, a corner to wander to) only inside four fifths of the safe circle: the same line that ends the run
    back inside, so a bot never chases its dinner back out to the edge with its tail in the fire. */
@@ -10203,7 +10309,7 @@ function foodOk(S,o,x,y,careful){ return !!o&&!o.dead&&!(o.hostile)&&!(careful&&
 /* Prey: the nearest living rival within reach whose line is two thirds of ours or less, with something to cut. */
 function botsPrey(P,S,x,y,n){
   var ps=G.players, best=null, bd=BOTS_HUNT_R, i;
-  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q===P||!Q.alive) continue; var m=segsOf(Q).length; if(m<3||n<BOTS_BIG*m) continue;
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q===P||!Q.alive||(Royale.truce&&Royale.truce.allied(P,Q))) continue; var m=segsOf(Q).length; if(m<3||n<BOTS_BIG*m) continue;
     var h=headOf(Q), d=Math.hypot(h.x-x,h.y-y); if(d<bd&&inSafe(S,h.x,h.y)){ bd=d; best=Q; } }
   return best;
 }
@@ -10231,7 +10337,7 @@ function botsPush(S,x,y,ox,oy,R){ var dx=x-ox, dy=y-oy, d=Math.hypot(dx,dy); if(
    or hurt, anyone armed within 240 px and any head at all coming at us within 170 px; a moving car about to arrive. Writes the way out into S.fx, S.fy (unnormalised); false when nothing is close. */
 function botsFear(P,S,x,y,n,careful){
   var ps=G.players, ms=G.minis||[], hs=G.humans, any=false, i, d, mr=careful?BOTS_MINI_FAR:BOTS_MINI_R, gn=0, gx=0, gy=0; S.fx=0; S.fy=0; S.fd=1e9;
-  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q===P||!Q.alive) continue; var big=segsOf(Q).length>=BOTS_BIG*Math.max(1,n);
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q===P||!Q.alive||(Royale.truce&&Royale.truce.allied(P,Q))) continue; var big=segsOf(Q).length>=BOTS_BIG*Math.max(1,n);
     var h=headOf(Q), hx=x-h.x, hy=y-h.y, hl=Math.hypot(hx,hy)||1, toward=((h.vx||0)*hx+(h.vy||0)*hy)/hl>BOTS_COMING; // coming this way, or merely near
     if(!big){ if(careful&&toward&&!(S.boredT>0)&&botsPush(S,x,y,h.x,h.y,BOTS_NEAR_R)) any=true; continue; } // small: any head coming at us can cut us to nothing
     if(S.boredT>0&&hl>BOTS_PANIC) continue; // a standoff that went nowhere: get on with eating unless it is close
@@ -10267,7 +10373,7 @@ function botsDodge(P,S,x,y,r,n,a,sp){
 function botsThink(P,S,dt){
   var M=G.match, F=G.F, R=M.ring, hd=headOf(P), x=hd.x, y=hd.y, n=segsOf(P).length, st=P===G.cur?G.st:P.st,
     careful=(P===G.cur?G.hp:P.hp)<BOTS_LOW||n<BOTS_SMALL, sp=st&&st.speed?st.speed:170;
-  botsSafe(S); S.commitT-=dt; S.foodBadT-=dt;
+  botsSafe(S,x,y,sp); S.commitT-=dt; S.foodBadT-=dt;
   // seconds after food without a bite or getting any nearer
   if(P.stats.eaten!==S.ate){ S.ate=P.stats.eaten; S.foodT=0; S.foodD=1e9; }
   else if(S.mode==='food'){ var fd=Math.hypot(S.gx-x,S.gy-y); if(fd<S.foodD-BOTS_NEARER){ S.foodD=fd; S.foodT=0; } else S.foodT+=dt; } else { S.foodT=0; S.foodD=1e9; } botsStuck(S,x,y,dt); botsStall(S,x,y,dt); S.need=(n*17+80)/sp+0.4; // seconds the whole line needs to clear a fence
@@ -10321,10 +10427,10 @@ function botsGhost(P,S,dt){
   if(!best){ setInput(P,0,false,0,0); return; }
   h=headOf(best); d=Math.sqrt(bd);
   var reach=m.kind==='manager'?d<m.r+h.r+40:m.kind==='champ'?d<120:(d<300&&!lineBlocked(G.F,m.x,m.y,h.x,h.y));
-  if(m.state==='windup'||m.state==='recover'){ S.px=m.x; S.py=m.y; S.stuckT=0; } else botsStuck(S,m.x,m.y,dt); // a boss standing to strike is not stuck
+  if(m.state==='windup'||m.state==='recover'){ S.px=m.x; S.py=m.y; S.stuckT=0; } else { botsStuck(S,m.x,m.y,dt); if(S.detourT>0) S.detourT-=dt*0.8; } // a boss standing to strike is not stuck; a driven boss runs at 1.15 of a head's pace (28 Oct), so its detour is short
   botsWay(G.F,S,m.x,m.y,h.x,h.y);
   var a=Math.atan2(S.wy-m.y,S.wx-m.x); if(S.detourT>0) a=S.detourA;
-  var dw=Math.hypot(S.wx-m.x,S.wy-m.y); if(dw>m.r+h.r+4) a=botsWhisk(S,m.x,m.y,m.r,a,Math.max(m.r+12,Math.min(m.r+40,dw)),0);
+  var dw=Math.hypot(S.wx-m.x,S.wy-m.y); if(dw>m.r+h.r+4) a=botsWhisk(S,m.x,m.y,m.r,a,Math.max(m.r+12,Math.min(m.r+70,dw)),0); // a driven boss runs at 1.15 of a head's pace (28 Oct): it looks a little further ahead
   S.a=a; setInput(P,a,true,reach,!(g.cd>0));
 }
 
@@ -10770,7 +10876,7 @@ Royale.cars={
    everything (mrand); a guest only shows its card and chip and sends {a:'pick',k} and {a:'aim',id}. Particles roll
    jrand(). Events: {k:'x',l:'tricks',a:'got'|'kind'|'used', ...}, must-deliver; every device presents them the same way. */
 (function(){
-var TRICK_FROM=20, TRICK_EVERY=25, TRICK_MAX=3, TRICK_LIFE=45, TRICK_REACH=22, TRICK_HOLD=10, TRICK_PICK_T=8,
+var TRICK_FROM=15, TRICK_EVERY=12, TRICK_MAX=6, TRICK_LIFE=45, TRICK_WARN=2, TRICK_LOCK=10, /* owner, 28 Oct: more packages, seen coming */ TRICK_REACH=22, TRICK_HOLD=10, TRICK_PICK_T=8,
   TRICK_SEND=1500, TRICK_NEAR=300, TRICK_FAR=900, TRICK_GAP=220, TRICK_R=16,
   TRICK_BOSS_N=2, TRICK_BOSS_CROWN=3, TRICK_BOSS_R=350, TRICK_SQUAD_N=5, TRICK_SQUAD_R=300, TRICK_FIRE_N=12, TRICK_FIRE_R=220, TRICK_FIRE_LIFE=10,
   TRICK_AIM_WAIT=1.5, TRICK_NAME_T=1.6, TRICK_BOT_T=1;
@@ -10795,7 +10901,7 @@ if(Art&&Art.defs) Art.defs.trick={label:'Trick crate',shapes:[
 /* Lane state, reset whenever G.match is a new object. Host: crates [{id,x,y,t}], the schedule, the hold-off per player id.
    Guest: gc, the crates near its own head as a flat [id,x,y,…]; fires, local copies of a fire trick's hazards to draw. */
 var S=tricksFresh();
-function tricksFresh(){ return {M:null,crates:[],seq:0,nextT:TRICK_FROM,cd:{},gc:[],fires:[],card:false,cardEl:null,cardT:0,aimT:0,name:'',nameKind:'',nameT:0,chip:'',chipW:0}; }
+function tricksFresh(){ return {M:null,crates:[],seq:0,nextT:TRICK_FROM,cd:{},gc:[],fires:[],card:false,cardEl:null,cardT:0,aimT:0,name:'',nameKind:'',nameT:0,chip:'',chipW:0,shopI:0,pending:[],warns:[]}; }
 function tricksSync(){ var M=G&&G.match; if(M===S.M) return; tricksCard(false); tricksDropFires(); var el=S.cardEl; S=tricksFresh(); S.M=M; S.cardEl=el; }
 function tricksOwn(o,k){ return Object.prototype.hasOwnProperty.call(o,k); }
 function tricksKind(k){ return typeof k==='string'&&tricksOwn(TRICK_INFO,k)?k:null; }
@@ -10819,7 +10925,10 @@ function tricksSpotOk(x,y){
 /* 300-900 px from a random living head, rolled on the match generator. */
 function tricksSpawnCrate(){
   if(S.crates.length>=TRICK_MAX) return null;
-  var P=randomLiving(); if(!P) return null;
+  /* the six panic-button shops in turn (owner, 28 Oct: going for a crate is a decision), inside the ring; a shop taken or burning is skipped */
+  var B=G.F.buttons||[], k, n=B.length; if(n){ for(k=0;k<n;k++){ var b=B[(S.shopI+k)%n], x0=Math.round(b.px), y0=Math.round(b.py); if(!tricksSpotOk(x0,y0)) continue; if(S.crates.some(function(c){ return c.x===x0&&c.y===y0; })) continue;
+      S.shopI=(S.shopI+k+1)%n; var c0={id:++S.seq,x:x0,y:y0,t:0}; S.crates.push(c0); return c0; } }
+  var P=nextLiving(); if(!P) return null;
   var hd=headOf(P), t;
   for(t=0;t<40;t++){ var a=mrand()*TAU, d=TRICK_NEAR+mrand()*(TRICK_FAR-TRICK_NEAR), x=Math.round(hd.x+Math.cos(a)*d), y=Math.round(hd.y+Math.sin(a)*d);
     if(tricksSpotOk(x,y)){ var c={id:++S.seq,x:x,y:y,t:0}; S.crates.push(c); return c; } }
@@ -10860,6 +10969,7 @@ function tricksHost(dt){
     if(tr.kind) continue;
     tr.t+=dt; if(tr.t>=TRICK_PICK_T) tricksSetKind(P,TRICK_KINDS[Math.min(2,Math.floor(mrand()*3))]); } // no choice in 8 s: the host rolls one
   tricksPickup();
+  for(i=S.pending.length-1;i>=0;i--){ S.pending[i].t-=dt; if(S.pending[i].t<=0){ var w=S.pending[i]; S.pending.splice(i,1); tricksLand(w); } }
 }
 function tricksSetKind(P,k){ P.trick.kind=k; P.trick.t=0; tricksPush({k:'x',l:'tricks',a:'kind',id:P.id,kind:k}); }
 
@@ -10875,7 +10985,7 @@ function tricksBosses(Q,pts){
   var hd=G.head, n=G.match.crown===Q.id?TRICK_BOSS_CROWN:TRICK_BOSS_N, a0=mrand()*TAU, k, kinds=['manager','champ','director'];
   for(k=0;k<n;k++){ var m=cityMini(true); if(!m){ m=spawnMini(G.F,G.sd,kinds[Math.floor(mrand()*3)%3],[]); if(m){ m.city=true; m.patrolT=6; } } if(!m) continue;
     var p=tricksRingSpot(hd.x,hd.y,TRICK_BOSS_R,a0+k*TAU/n,m.r+4);
-    m.x=p.x; m.y=p.y; m.px=hd.x; m.py=hd.y; m.awake=true; m.state='chase'; m.t=0; m.trick=true; m.h=m.face=Math.atan2(hd.y-p.y,hd.x-p.x);
+    m.x=p.x; m.y=p.y; m.px=hd.x; m.py=hd.y; m.awake=true; m.state='chase'; m.t=0; m.trick=true; m.target=Q.id; m.targetT=TRICK_LOCK; m.h=m.face=Math.atan2(hd.y-p.y,hd.x-p.x); // locked on the target for a while
     pts.push(Math.round(p.x),Math.round(p.y)); }
 }
 function tricksSquad(Q,pts){
@@ -10891,16 +11001,22 @@ function tricksFire(Q,pts){
   var F=G.F, hd=G.head, a0=mrand()*TAU, k;
   for(k=0;k<TRICK_FIRE_N;k++){ var a=a0+k*TAU/TRICK_FIRE_N, x=hd.x+Math.cos(a)*TRICK_FIRE_R, y=hd.y+Math.sin(a)*TRICK_FIRE_R;
     if(navBlocked(F,x,y,8,true)){ var q=freeNear(F,x,y,8); x=q.x; y=q.y; }
-    x=Math.round(x); y=Math.round(y); F.hazards.push({kind:'fire',x:x,y:y,r:26,life:TRICK_FIRE_LIFE}); pts.push(x,y); }
+    x=Math.round(x); y=Math.round(y); F.hazards.push({kind:'fire',x:x,y:y,r:26,life:TRICK_FIRE_LIFE,only:Q.id}); pts.push(x,y); } // the target's head alone burns
 }
+/* The host: a trick is announced to its target TRICK_WARN before it lands (a dashed ring in the sender's colour on the target's
+   screen); it lands if the target is still alive. */
 function tricksUse(P,Q){
-  var kind=P.trick.kind, pts=[], was=G.cur;
-  P.trick.target=Q.id;
+  var kind=P.trick.kind; P.trick.target=Q.id; P.trick=null; S.cd[P.id]=TRICK_HOLD;
+  S.pending.push({by:P.id,of:Q.id,kind:kind,t:TRICK_WARN});
+  tricksPush({k:'x',l:'tricks',a:'warn',by:P.id,of:Q.id,kind:kind,t:TRICK_WARN});
+  return true;
+}
+function tricksLand(w){
+  var P=playerById(w.by), Q=playerById(w.of), kind=w.kind, pts=[], was=G.cur; if(!Q||!Q.alive) return false;
   bindPlayer(Q);
   if(kind==='bosses') tricksBosses(Q,pts); else if(kind==='squad') tricksSquad(Q,pts); else tricksFire(Q,pts);
   if(was) bindPlayer(was);
-  P.trick=null; S.cd[P.id]=TRICK_HOLD;
-  tricksPush({k:'x',l:'tricks',a:'used',by:P.id,of:Q.id,kind:kind,p:pts});
+  tricksPush({k:'x',l:'tricks',a:'used',by:w.by,of:Q.id,kind:kind,p:pts});
   return true;
 }
 
@@ -10920,6 +11036,7 @@ function tricksMsg(P,m){
 /* ---- presentation, every device: the host at push time, a guest from onEvent ---- */
 function tricksName(id){ var P=playerById(id); return P?P.name:'Someone'; }
 function tricksAt(pts){ var x=0, y=0, n=pts.length>>1, i; for(i=0;i<n;i++){ x+=pts[i*2]; y+=pts[i*2+1]; } return n?{x:x/n,y:y/n}:null; }
+var Q0=null;
 function tricksMe(fn){ var was=G.cur; if(G.me&&was!==G.me) bindPlayer(G.me); fn(); if(was&&was!==G.cur) bindPlayer(was); } // stamps and floats belong to this device's player
 function tricksPresent(ev){
   var me=G.me, i, P;
@@ -10931,16 +11048,24 @@ function tricksPresent(ev){
   } else if(ev.a==='kind'){
     P=playerById(ev.id); if(P&&P.alive){ if(!P.trick) P.trick={kind:null,target:0,t:0}; P.trick.kind=ev.kind; }
     if(me&&ev.id===me.id) tricksCard(false);
+  } else if(ev.a==='warn'){
+    S.warns.push({by:ev.by,of:ev.of,kind:ev.kind,t:ev.t}); P=playerById(ev.by); if(P) P.trick=null;
+    if(me&&ev.of===me.id){ Snd.play('heat'); Haptic.tap(20); }
+    if(me&&ev.by===me.id){ tricksCard(false); S.aimT=0; S.name=(Q0=playerById(ev.of))?Q0.name:''; S.nameKind=ev.kind; S.nameT=TRICK_NAME_T; tricksMe(function(){ stamp('SENT',2,G.head.x,G.head.y); }); }
   } else if(ev.a==='used'){
     var I=TRICK_INFO[ev.kind], pts=ev.p||[], c=tricksAt(pts), Q=playerById(ev.of);
+    for(i=S.warns.length-1;i>=0;i--) if(S.warns[i].of===ev.of&&S.warns[i].by===ev.by) S.warns.splice(i,1);
     P=playerById(ev.by); if(P) P.trick=null;
     for(i=0;i+1<pts.length;i+=2) fxParts(pts[i],pts[i+1],ev.kind==='fire'?6:12,I.col,ev.kind==='fire'?0.6:1);
     if(c) Snd.play(I.snd,c.x,c.y);
     if(!G.match.host&&ev.kind==='fire') for(i=0;i+1<pts.length;i+=2){ var hz={kind:'fire',x:pts[i],y:pts[i+1],r:26,life:TRICK_FIRE_LIFE,trickG:true}; G.F.hazards.push(hz); S.fires.push(hz); } // a guest draws the fire the host placed
     if(me&&ev.of===me.id){ banner(I.hit.replace('{n}',tricksName(ev.by))); Haptic.tap(40); }
-    if(me&&ev.by===me.id){ tricksCard(false); S.aimT=0; S.name=Q?Q.name:''; S.nameKind=ev.kind; S.nameT=TRICK_NAME_T; tricksMe(function(){ stamp('SENT',2,G.head.x,G.head.y); }); }
   }
 }
+/* The warning ring: dashed, in the sender's colour, round the target's head, shrinking over TRICK_WARN. Every device. */
+function tricksDrawWarns(){ var i; for(i=0;i<S.warns.length;i++){ var w=S.warns[i], Q=playerById(w.of), P=playerById(w.by); if(!Q||!Q.alive) continue; var h=headOf(Q), u=Math.max(0,w.t/TRICK_WARN), col=P?ROYALE_COLOURS[(P.colour||0)%ROYALE_COLOURS.length]:'#efe7d2';
+    ctx.globalAlpha=0.85; ctx.strokeStyle=col; ctx.lineWidth=3; if(ctx.setLineDash) ctx.setLineDash([10,8]); ctx.lineDashOffset=calm()?0:-G.t*50; ctx.beginPath(); ctx.arc(h.x,h.y,h.r+40+160*u,0,TAU); ctx.stroke(); if(ctx.setLineDash) ctx.setLineDash([]); }
+  ctx.globalAlpha=1; }
 /* A guest's local fire copies burn out on the host's clock (10 s); the host's own hazards age in update(). */
 function tricksFires(dt){ var F=G.F, i; for(i=S.fires.length-1;i>=0;i--){ var hz=S.fires[i]; hz.life-=dt; if(hz.life<=0){ var j=F.hazards.indexOf(hz); if(j>=0) F.hazards.splice(j,1); S.fires.splice(i,1); } } }
 function tricksDropFires(){ var F=G&&G.F, i; if(F) for(i=0;i<S.fires.length;i++){ var j=F.hazards.indexOf(S.fires[i]); if(j>=0) F.hazards.splice(j,1); } S.fires.length=0; }
@@ -10949,6 +11074,7 @@ function tricksEventOk(ev){
   if(!ev||typeof ev!=='object') return false;
   if(ev.a==='got') return tricksNum(ev.id)&&tricksNum(ev.c)&&tricksNum(ev.x)&&tricksNum(ev.y)&&(ev.src===undefined||ev.src==='mini');
   if(ev.a==='kind') return tricksNum(ev.id)&&!!tricksKind(ev.kind);
+  if(ev.a==='warn') return tricksNum(ev.by)&&tricksNum(ev.of)&&!!tricksKind(ev.kind)&&tricksNum(ev.t);
   if(ev.a==='used'){ if(!tricksNum(ev.by)||!tricksNum(ev.of)||!tricksKind(ev.kind)||!Array.isArray(ev.p)||ev.p.length>2*TRICK_FIRE_N) return false;
     for(var i=0;i<ev.p.length;i++) if(!tricksNum(ev.p[i])) return false; return true; }
   return false;
@@ -11050,8 +11176,10 @@ Royale.tricks={
     if(S.card){ S.cardT-=dt; if(S.cardT<=0||!tr||tr.kind||!me.alive||M.phase!=='play') tricksCard(false); } // the host rolls at 8 s; the card goes either way
     if(S.aimT>0){ S.aimT-=dt; if(S.aimT<=0&&tr&&tr.target) tr.target=0; } // a refused aim (the target died first): tap again
     if(S.nameT>0) S.nameT-=dt;
+    for(var wi=S.warns.length-1;wi>=0;wi--){ S.warns[wi].t-=dt; if(S.warns[wi].t<=-0.5) S.warns.splice(wi,1); }
   },
-  draw:function(layer){ if(!G.match) return; tricksSync(); if(layer==='over') tricksDrawOver(); else if(layer==='hud'&&G.match.phase==='play') tricksChip(); },
+  draw:function(layer){ if(!G.match) return; tricksSync(); if(layer==='over'){ tricksDrawOver(); tricksDrawWarns(); } else if(layer==='hud'&&G.match.phase==='play') tricksChip(); },
+  warns:function(){ return S.warns; }, pendingLand:function(){ return S.pending; },
   onMsg:tricksMsg,
   /* The holder's choices: the host decides its own at once; a guest shows it and sends it up. */
   pick:function(k){ var me=G.me, M=G.match; k=tricksKind(k); if(!M||!me||!k||!me.trick||me.trick.kind) return false;
@@ -11075,6 +11203,472 @@ Royale.tricks={
   /* for the sim and the reviewers */
   crates:function(){ return G.match&&G.match.host?S.crates:S.gc; }, spotOk:tricksSpotOk, spawn:tricksSpawnCrate, cardOn:function(){ return S.card; },
   _s:function(){ return S; }
+};
+})();
+/* ---------- Parade Royale: build (lane B1; ROYALE.md §15) ---------- */
+/* The campaign's loop inside a match (owner, 28 Oct: a bullet heaven you win with your build, no buttons): every person
+   eaten is a point on Rampage's curve (BUILD_XP0, then BUILD_GAP + BUILD_STEP a level), and a level opens a PICK ONE card
+   of three combat families over the running match. The host decides everything: the pool (canTake with the player bound:
+   below SKMAX, BUILD_CAP families at most), the three offered (mrand), a pick that never came in BUILD_PICK_T (mrand), a
+   bot's pick after BUILD_BOT_T (deepen what it holds, else the first). Ranks live in the player's own G.run.ranks, so
+   sk() and stats() read them for whoever is bound; every take is a must-deliver event and every player's ranks ride the
+   snapshot (pack/unpack), so a guest's own head runs on the same build as the host's and rivals' builds can be read. */
+(function(){
+var BUILD_XP0=8, BUILD_GAP=8, BUILD_STEP=3, /* 8, 19, 33, 50, 70, 93 eats (owner, 28 Oct: drafts came a bit too often on 5, 12, 21) */ BUILD_PICK_T=8, BUILD_BOT_T=1, BUILD_CAP=4, BUILD_OPTS=3;
+var S=buildFresh();
+function buildFresh(){ return {M:null,card:false,cardEl:null,cardT:0,draft:null,lvl:0}; }
+function buildSync(){ var M=G&&G.match; if(M===S.M) return; S.M=M; buildCard(false); S=buildFresh(); S.M=M; }
+function buildRun(P){ return P===G.cur?G.run:P.run; }
+/* A player's match build: fresh on first sight. Everyone starts equal: no ranks, every family open to SKMAX, BUILD_CAP slots. */
+function buildOf(P){ if(P.build) return P.build; var r=buildRun(P), i; if(r){ for(i=0;i<COMBAT.length;i++) r.ceil[COMBAT[i]]=SKMAX[COMBAT[i]]||0; r.cap=BUILD_CAP; }
+  P.build={xp:0,lvl:0,next:BUILD_XP0,draft:null}; return P.build; }
+function buildNum(v){ return typeof v==='number'&&isFinite(v); }
+function buildPush(ev){ G.match.events.push(ev); if(Royale.build&&Royale.build.onEvent) Royale.build.onEvent(ev); }
+/* Host: P (bound or not) ate someone. */
+function buildEat(P){
+  var M=G.match; if(!M||!M.host||M.phase!=='play'||!P.alive) return;
+  var b=buildOf(P); b.xp++; if(b.xp<b.next) return;
+  b.lvl++; b.next+=BUILD_GAP+BUILD_STEP*b.lvl;
+  if(b.draft){ b.draft.owed=(b.draft.owed||0)+1; buildPush({k:'x',l:'build',a:'level',id:P.id,lvl:b.lvl}); return; } // a card already up: the next draft follows it
+  buildOpen(P,b);
+}
+/* Host: the three offered, rolled with the player bound so the pool is its own. None legal: the level is just a beat. */
+function buildOpen(P,b){
+  var was=G.cur; bindPlayer(P); var pool=draftPool(null), opts=[], i; bindPlayer(was);
+  while(pool.length&&opts.length<BUILD_OPTS){ i=Math.floor(mrand()*pool.length); opts.push(pool[i]); pool.splice(i,1); }
+  if(!opts.length){ buildPush({k:'x',l:'build',a:'level',id:P.id,lvl:b.lvl}); return; }
+  b.draft={opts:opts,t:0,owed:0};
+  buildPush({k:'x',l:'build',a:'draft',id:P.id,lvl:b.lvl,o:opts});
+}
+/* Host: the pick lands. Legal only if offered and still takeable; else the host rolls another of the offered. */
+function buildTake(P,id){
+  var b=buildOf(P), d=b.draft; if(!d||d.opts.indexOf(id)<0) return false;
+  var was=G.cur; bindPlayer(P); var ok=canTake(id); if(ok){ var r=G.run; r.ranks[id]=(r.ranks[id]||0)+1; G.st=stats(); chipsDirty=true; } var rank=ok?G.run.ranks[id]:0; bindPlayer(was);
+  if(!ok){ var rest=d.opts.filter(function(x){ return x!==id; }); if(!rest.length){ b.draft=null; return false; } return buildTake(P,rest[Math.floor(mrand()*rest.length)]); }
+  b.draft=null; buildPush({k:'x',l:'build',a:'take',id:P.id,f:id,r:rank,lvl:b.lvl});
+  if(d.owed>0) buildOpen(P,b); // the level that came while the card was up
+  return true;
+}
+function buildBotPick(P,b){ var d=b.draft, r=buildRun(P), i; for(i=0;i<d.opts.length;i++) if((r.ranks[d.opts[i]]||0)>0) return d.opts[i]; return d.opts[0]; }
+function buildHost(dt){
+  var ps=G.players, i;
+  for(i=0;i<ps.length;i++){ var P=ps[i], b=P.build, d=b&&b.draft; if(!d) continue;
+    if(!P.alive){ b.draft=null; continue; }
+    d.t+=dt;
+    if(P.bot){ if(d.t>=BUILD_BOT_T) buildTake(P,buildBotPick(P,b)); continue; }
+    if(d.t>=BUILD_PICK_T) buildTake(P,d.opts[Math.floor(mrand()*d.opts.length)]); } // no pick in 8 s: the host rolls one of the three
+}
+/* The host's door: a guest's {a:'pick',f}, the host's own tap. */
+function buildMsg(P,m){
+  var M=G.match; if(!M||!M.host||M.phase!=='play'||!m||typeof m!=='object'||!P||G.players.indexOf(P)<0||!P.alive) return false;
+  if(m.a!=='pick'||typeof m.f!=='string'||!isCombat(m.f)) return false;
+  var b=P.build; if(!b||!b.draft) return false;
+  return buildTake(P,m.f);
+}
+
+/* ---- presentation, every device ---- */
+function buildMe(fn){ var was=G.cur; if(G.me&&was!==G.me) bindPlayer(G.me); fn(); if(was&&was!==G.cur) bindPlayer(was); }
+function buildEventOk(ev){
+  if(!ev||typeof ev!=='object'||!buildNum(ev.id)) return false;
+  if(ev.a==='level') return buildNum(ev.lvl);
+  if(ev.a==='draft'){ if(!buildNum(ev.lvl)||!Array.isArray(ev.o)||!ev.o.length||ev.o.length>BUILD_OPTS) return false; for(var i=0;i<ev.o.length;i++) if(typeof ev.o[i]!=='string'||!isCombat(ev.o[i])) return false; return true; }
+  if(ev.a==='take') return typeof ev.f==='string'&&isCombat(ev.f)&&buildNum(ev.r)&&ev.r>=1&&ev.r<=(SKMAX[ev.f]||0);
+  if(ev.a==='slimed') return buildNum(ev.by);
+  return false;
+}
+function buildPresent(ev){
+  var me=G.me, P=playerById(ev.id); if(!P) return; var mine=me&&P===me;
+  if(ev.a==='level'||ev.a==='draft'){
+    if(mine) buildMe(function(){ Snd.play('power'); stamp('LEVEL '+(ev.lvl+1),3,G.head.x,G.head.y); /* a big beat: it outranks the eat chain's words; no buzz of its own, the eat's is enough */ fxParts(G.head.x,G.head.y,16,['#f2b134','#efe7d2'],1); });
+    if(ev.a==='draft'&&mine){ S.draft={opts:ev.o.slice(),lvl:ev.lvl}; S.lvl=ev.lvl; buildCard(true); } }
+  else if(ev.a==='slimed'){ if(mine) buildMe(function(){ G.hurt=Math.max(G.hurt||0,0.2); stamp('SLIMED',2,G.head.x,G.head.y); Haptic.tap(25); }); }
+  else if(ev.a==='take'){
+    var r=buildRun(P); if(r&&!G.match.host){ r.ranks[ev.f]=ev.r; if(mine){ G.st=stats(); chipsDirty=true; } } // the host wrote its own in buildTake
+    if(mine){ S.draft=null; buildCard(false); var k=skillDef(ev.f); buildMe(function(){ Snd.play('power',undefined,undefined,{id:ev.f,lift:true}); stamp((k.card||k.name).toUpperCase()+(ev.r>1?' '+ev.r:''),2,G.head.x,G.head.y); fxParts(G.head.x,G.head.y,16,['#f2b134','#efe7d2'],1); }); } }
+}
+
+/* ---- the card: PICK ONE · LEVEL N, three families, the match running behind it (the trick card's look) ---- */
+var BUILD_CSS=
+  '#hud.hidden~#royale #royaleBuild{display:none}'+
+  '#royaleBuild .rbCard{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:6;width:min(460px,calc(100% - 24px));box-sizing:border-box;background:#232a33;border:3px solid #171923;border-radius:18px;box-shadow:0 6px 0 #171923;padding:10px 10px 10px;animation:rbIn .25s ease-out both}'+
+  '#royaleBuild .rbHead{display:flex;align-items:baseline;gap:8px;margin:0 4px 8px}'+
+  '#royaleBuild .rbT{font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:1px;line-height:1;color:#f2b134;text-shadow:3px 3px 0 #171923}'+
+  '#royaleBuild .rbK{font:800 11px var(--font);letter-spacing:3px;color:#d9cfb6;margin-left:auto}'+
+  '#royaleBuild .rbGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}'+
+  '#royaleBuild .rbBtn{min-width:0;background:#faefdc;color:#171923;border:3px solid #171923;border-radius:14px;box-shadow:0 4px 0 #171923;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;font-family:var(--font);touch-action:manipulation}'+
+  '#royaleBuild .rbBtn:active{transform:translateY(2px);box-shadow:0 2px 0 #171923}'+
+  '#royaleBuild .rbBtn:focus-visible{outline:3px solid var(--amber);outline-offset:2px}'+
+  '#royaleBuild .rbIc{width:44px;height:44px;border-radius:50%;background:var(--pc);border:3px solid #171923;display:flex;align-items:center;justify-content:center;box-sizing:border-box}'+
+  '#royaleBuild .rbIc .h-icon{width:28px;height:28px}'+
+  '#royaleBuild .rbBtn b{font-family:var(--display);font-weight:400;font-size:19px;letter-spacing:.5px;line-height:1}'+
+  '#royaleBuild .rbBtn i{font-style:normal;font-size:11.5px;line-height:1.25;color:#4a4458}'+
+  '#royaleBuild .rbBtn em{font-style:normal;font:800 10px var(--font);letter-spacing:2px;color:#8a7f66}'+
+  '#royaleBuild .rbBar{height:5px;margin:10px 4px 0;background:rgba(239,231,210,.18);border-radius:3px;overflow:hidden}'+
+  '#royaleBuild .rbBar span{display:block;height:100%;background:#f2b134;transform-origin:left;animation:rbTime '+BUILD_PICK_T+'s linear both}'+
+  '@keyframes rbTime{from{transform:scaleX(1)}to{transform:scaleX(0)}}'+
+  '@keyframes rbIn{from{transform:translate(-50%,24px);opacity:0}to{transform:translate(-50%,0);opacity:1}}'+
+  '@media (prefers-reduced-motion: reduce){#royaleBuild .rbCard{animation:none}}';
+function buildCardHtml(){
+  var d=S.draft, r=G.me?buildRun(G.me):null, h='<div class="rbCard" role="dialog" aria-label="Pick a mutation"><div class="rbHead"><span class="rbT">PICK ONE</span><span class="rbK">LEVEL '+(S.lvl+1)+'</span></div><div class="rbGrid">', i;
+  for(i=0;i<d.opts.length;i++){ var id=d.opts[i], k=skillDef(id), cur=r?(r.ranks[id]||0):0;
+    h+='<button type="button" class="rbBtn" data-f="'+id+'"><span class="rbIc" style="--pc:'+(PCOL[id]||'#ddd')+'">'+k.icon+'</span><b>'+(k.card||k.name).toUpperCase()+'</b><i>'+k.short+'</i><em>'+(cur?'RANK '+(cur+1):'NEW')+'</em></button>'; }
+  return Art.rich(h+'</div><div class="rbBar"><span></span></div></div>');
+}
+function buildCardTap(e){
+  var t=e&&e.target, b=t&&t.closest?t.closest('[data-f]'):t, f=b&&b.getAttribute?b.getAttribute('data-f'):null; if(!f||!isCombat(f)) return;
+  if(e.preventDefault) e.preventDefault(); if(e.stopPropagation) e.stopPropagation();
+  Snd.play('ui'); Royale.build.pick(f);
+}
+function buildCard(on){
+  if(S.card===on) return; S.card=on; S.cardT=on?BUILD_PICK_T:0;
+  var el=Royale.mount('royaleBuild',on?buildCardHtml():'',BUILD_CSS);
+  if(el&&S.cardEl!==el){ S.cardEl=el; if(el.addEventListener) el.addEventListener('click',buildCardTap); }
+}
+
+/* ---- the build against rivals (B2; owner, 28 Oct: the chess is the build, every counter automatic) ----
+   Host only, each living player bound in turn from buildHost. Every effect thins a rival line through removeSeg(i,'shot')
+   (never a fracture) or marks the rival, and every one can be read from across the street:
+     Fire      a rival zombie crossing your trail burns (FIRE_GAP per rank per rival line); a rival head on it burns too (updateHead)
+     Electric  updateSkills' arcs leap into the nearest rival line within its reach: one zombie, two at rank 3 (zapCands/zapHit)
+     Bile      the puddle flies at a rival head ahead as at a person (bileTarget); a hit slims it: BILE_SLOW for BILE_T and a
+               bite on it takes the whole cut (bileHit, core's duelMul, fights)
+     Roar      updateSkills' roar: the last ROAR_TAIL+rank zombies of any rival line within R stand dazed, yours (roarRivals)
+     Mob       the scrum forms on its own when a rival head comes within MOB_NEAR (rank 1+), on a cut from rank 3 (removeSeg);
+               while ringed the line cannot be cut and the head runs at RANKS_SLOW
+     Passive   your strays snap at rival zombies in reach (snapTarget/snapHit from updateStrays), by your rank */
+function buildFoe(P,Q){ return Q!==P&&Q.alive&&!(Royale.truce&&Royale.truce.allied(P,Q)); } // a rival, never an ally (§17)
+var FIRE_GAP=[0,0.8,0.6,0.45], ROAR_TAIL=2, ROAR_SHARE=3, MOB_NEAR=160, FIRE_COLS=['#ff8c1a','#ffe066','#3a2a22']; // gentle: a build thins, it never shreds a small horde (bots' median life is the yardstick)
+function buildThin(Q,i,cols){ var was=G.cur; bindPlayer(Q); var s=G.segs[i]; if(s){ fxParts(s.x,s.y,6,cols||FIRE_COLS,0.8); removeSeg(i,'shot'); } bindPlayer(was); return !!s; }
+function buildSegsOf(Q){ return Q===G.cur?G.segs:Q.segs; }
+/* Fire: for the bound player P, every rival line against P's own trail. */
+function buildFire(P,dt){
+  var b=buildOf(P), F=G.F, hz=F.hazards, ps=G.players, i, j, k, rk=rankOf(P,'fire'); if(!rk) return;
+  b.fireCd=b.fireCd||{};
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(!buildFoe(P,Q)) continue; var cd=(b.fireCd[Q.id]||0)-dt; if(cd>0){ b.fireCd[Q.id]=cd; continue; }
+    var segs=buildSegsOf(Q), n=segs.length, hit=-1; if(!n){ b.fireCd[Q.id]=0; continue; }
+    var x0=1e9, y0=1e9, x1=-1e9, y1=-1e9; for(j=0;j<n;j++){ var s=segs[j]; if(s.x<x0) x0=s.x; if(s.x>x1) x1=s.x; if(s.y<y0) y0=s.y; if(s.y>y1) y1=s.y; }
+    for(k=0;k<hz.length&&hit<0;k++){ var h=hz[k]; if(!h.mine||h.by!==P.id||h.kind!=='fire'||h.x<x0-24||h.x>x1+24||h.y<y0-24||h.y>y1+24) continue;
+      for(j=0;j<n;j++){ var z=segs[j]; if(Math.abs(z.x-h.x)<h.r+6&&Math.abs(z.y-h.y)<h.r+6&&Math.hypot(z.x-h.x,z.y-h.y)<h.r+6){ hit=j; break; } } }
+    if(hit>=0){ buildThin(Q,hit,FIRE_COLS); Snd.play('crackle',segs[Math.min(hit,segs.length-1)]?segs[Math.min(hit,segs.length-1)].x:P.head.x,P.head.y,1); b.fireCd[Q.id]=FIRE_GAP[Math.min(3,rk)]; } else b.fireCd[Q.id]=0; }
+}
+/* Mob: the scrum on its own when a rival head comes close (rank 1+). */
+function buildMob(P){
+  if(!rankOf(P,'mob')||G.ranksT>0||G.ranksCd>0||G.surgeT>0||G.segs.length<3) return;
+  var hd=G.head, ps=G.players, i; for(i=0;i<ps.length;i++){ var Q=ps[i]; if(!buildFoe(P,Q)) continue; var h=headOf(Q); if(Math.abs(h.x-hd.x)<MOB_NEAR&&Math.abs(h.y-hd.y)<MOB_NEAR&&Math.hypot(h.x-hd.x,h.y-hd.y)<MOB_NEAR){ closeRanks(); return; } }
+}
+function buildRivals(dt){ forPlayers(function(P){ if(!P.alive) return; buildFire(P,dt); buildMob(P); }); }
+/* Electric (from updateSkills, the bound player zapping): the nearest zombie of each rival line within R2, as a candidate. */
+function buildZapCands(cands,R2){
+  var hd=G.head, ps=G.players, i, j; for(i=0;i<ps.length;i++){ var Q=ps[i]; if(!buildFoe(G.cur,Q)) continue; var segs=buildSegsOf(Q), best=-1, bd=R2;
+    for(j=0;j<segs.length;j++){ var s=segs[j]; if(Math.abs(s.x-hd.x)>R2||Math.abs(s.y-hd.y)>R2) continue; var d=Math.hypot(s.x-hd.x,s.y-hd.y); if(d<bd){ bd=d; best=j; } }
+    if(best>=0) cands.push({h:segs[best],d:bd,rival:Q}); }
+}
+function buildZapHit(c){ var Q=c.rival, segs=buildSegsOf(Q), i=segs.indexOf(c.h); if(i<0) return; G.arcs.push(makeArc(G.head.x,G.head.y,c.h.x,c.h.y,sk('electric'))); buildThin(Q,i,['#8fd8ff','#ffffff']); }
+/* Bile (from updateSkills, the bound player aiming): a rival head ahead within bd, not yet slimed. */
+function buildBileTarget(bd){
+  var hd=G.head, ps=G.players, best=null, i; for(i=0;i<ps.length;i++){ var Q=ps[i]; if(!buildFoe(G.cur,Q)) continue; var o=Q===G.cur?G:Q; if(o.bileT>0) continue; var h=headOf(Q), d=Math.hypot(h.x-hd.x,h.y-hd.y)-h.r;
+    if(d<bd&&Math.abs(angNorm(Math.atan2(h.y-hd.y,h.x-hd.x)-hd.h))<1.05){ bd=d; best={h:h,d:d,Q:Q}; } }
+  return best;
+}
+/* Bile (from the projectile loop, the thrower bound): a rival head under the puddle is slimed. */
+function buildBileHit(pr){
+  var ps=G.players, i, T=playerById(pr.by); for(i=0;i<ps.length;i++){ var Q=ps[i]; if(Q.id===pr.by||!Q.alive||(T&&!buildFoe(T,Q))) continue; var h=headOf(Q); if(Math.hypot(h.x-pr.x,h.y-pr.y)>=h.r+6) continue; // the projectile loop binds the nearest head: skip the thrower, never the bound one
+    pr.dead=true; var o=Q===G.cur?G:Q; o.bileT=Math.max(o.bileT||0,BILE_T); Snd.play('splat',pr.x,pr.y); fxParts(pr.x,pr.y,10,['#8fd14f','#55efc4'],1); G.decals.push({x:pr.x,y:pr.y,r:12,life:15,color:'#3f7a2a'});
+    buildPush({k:'x',l:'build',a:'slimed',id:Q.id,by:pr.by|0}); return true; }
+  return false;
+}
+/* Roar (from updateSkills, the bound player roaring): the tail of every rival line within R stands dazed, the roarer's to take. */
+function buildRoarRivals(R,rk){
+  var P=G.cur, hd=G.head, ps=G.players, hit=0, i, k; for(i=0;i<ps.length;i++){ var Q=ps[i]; if(!buildFoe(P,Q)) continue;
+    var was=G.cur; bindPlayer(Q); var took=0, segs=G.segs, most=Math.min(ROAR_TAIL+rk,Math.floor(segs.length/ROAR_SHARE)); // at most a third of the line
+    while(took<most&&segs.length>1){ var t=segs[segs.length-1]; if(Math.hypot(t.x-hd.x,t.y-hd.y)>=R) break; var n0=G.strays.length; makeStray(segs.pop()); var s=G.strays[n0]; if(s&&!s.dead){ Royale.fights.claim(s,Q,P); s.joinT=0.8; } took++; }
+    if(took){ G.st=stats(); chipsDirty=true; Q.stats.lost+=took; P.stats.dmgTo[Q.id]=(P.stats.dmgTo[Q.id]||0)+0; hit+=took; }
+    bindPlayer(was); }
+  return hit;
+}
+/* Passive Aggressive (from updateStrays, a raging stray of a player with the rank): the nearest rival zombie within rd. */
+function buildSnapTarget(st,rd){
+  var O=playerById(st.from); if(!O||!O.alive||!rankOf(O,'passive')) return null; var ps=G.players, best=null, i, j;
+  for(i=0;i<ps.length;i++){ var Q=ps[i]; if(!buildFoe(O,Q)) continue; var segs=buildSegsOf(Q);
+    for(j=0;j<segs.length;j++){ var s=segs[j]; if(Math.abs(s.x-st.x)>rd||Math.abs(s.y-st.y)>rd) continue; var d=Math.hypot(s.x-st.x,s.y-st.y); if(d<rd){ rd=d; best={seg:s,d:d,Q:Q}; } } }
+  return best;
+}
+function buildSnapHit(st,Q,seg){ var segs=buildSegsOf(Q), i=segs.indexOf(seg); if(i<0) return false; buildThin(Q,i,['#ff5a66','#efe7d2']); Snd.play('crunch',st.x,st.y); return true; }
+/* A player's strongest family, for the tag; null with no build. */
+function buildTop(P){ var r=buildRun(P), best=null, bv=0, i; if(!r) return null; for(i=0;i<COMBAT.length;i++){ var v=r.ranks[COMBAT[i]]||0; if(v>bv){ bv=v; best=COMBAT[i]; } } return best; }
+/* Fire trails on the wire: a guest draws every player's trail (its own included: its head does not lay one) from the pack. */
+var BUILD_HZ_R=1500, BUILD_HZ_N=48, buildNetHz=[];
+function buildPackHazards(Pg){ var F=G.F, hz=F.hazards, hd=headOf(Pg), out=[], i; for(i=0;i<hz.length&&out.length<BUILD_HZ_N*4;i++){ var h=hz[i]; if(!h.mine||h.kind!=='fire') continue; if(Math.abs(h.x-hd.x)<BUILD_HZ_R&&Math.abs(h.y-hd.y)<BUILD_HZ_R) out.push(Math.round(h.x),Math.round(h.y),h.by|0,Math.max(1,Math.round((h.life||1)*10))); } return out; }
+function buildUnpackHazards(v){ var F=G.F, i; if(!F) return; for(i=F.hazards.length-1;i>=0;i--) if(F.hazards[i].netG) F.hazards.splice(i,1);
+  if(!Array.isArray(v)) return; for(i=0;i+3<v.length&&i<BUILD_HZ_N*4;i+=4){ if(!buildNum(v[i])||!buildNum(v[i+1])) continue; F.hazards.push({kind:'fire',x:v[i],y:v[i+1],r:15,life:Math.max(0.1,(v[i+3]|0)/10),mine:true,by:v[i+2]|0,netG:true}); } }
+
+Royale.build={
+  XP0:BUILD_XP0, GAP:BUILD_GAP, STEP:BUILD_STEP, PICK_T:BUILD_PICK_T, BOT_T:BUILD_BOT_T, CAP:BUILD_CAP,
+  of:buildOf,
+  update:function(dt){ var M=G.match; if(!M) return; buildSync();
+    if(M.host&&M.phase==='play'){ buildHost(dt); buildRivals(dt); }
+    if(S.card){ S.cardT-=dt; var me=G.me; if(S.cardT<=0||!S.draft||!me||!me.alive||M.phase!=='play'){ S.draft=null; buildCard(false); } } },
+  onEat:function(P,h){ buildEat(P); },
+  /* A golden brain (lane E): a free draft for P, owed if a card is already up. */
+  bonus:function(P){ var M=G.match; if(!M||!M.host||!P||!P.alive) return false; var b=buildOf(P); b.lvl++; if(b.draft){ b.draft.owed=(b.draft.owed||0)+1; return true; } buildOpen(P,b); return true; },
+  zapCands:buildZapCands, zapHit:buildZapHit, bileTarget:buildBileTarget, bileHit:buildBileHit, roarRivals:buildRoarRivals, snapTarget:buildSnapTarget, snapHit:buildSnapHit, top:buildTop,
+  onMsg:buildMsg,
+  onEvent:function(ev){ if(!G.match||!buildEventOk(ev)) return; buildPresent(ev); },
+  /* My pick: the host decides its own at once; a guest closes the card and sends it up. */
+  pick:function(f){ var me=G.me, M=G.match; if(!M||!me||!isCombat(f)||!S.draft||S.draft.opts.indexOf(f)<0) return false;
+    if(M.host) return buildMsg(me,{a:'pick',f:f});
+    S.draft=null; buildCard(false); return !!(Royale.net&&Royale.net.sendLane&&Royale.net.sendLane('build',{a:'pick',f:f})); },
+  /* §6.5: every living player's ranks, [id, fire, vomit, roar, electric, mob, passive, …]: a late joiner and every guest read rivals' builds. */
+  pack:function(Pg){ var M=G.match; if(!M||!M.host) return null; var ps=G.players||[], out=[], i, k;
+    for(i=0;i<ps.length;i++){ var P=ps[i], r=buildRun(P); if(!P.alive||!r) continue; var any=false, row=[P.id]; for(k=0;k<COMBAT.length;k++){ var v=r.ranks[COMBAT[k]]||0; row.push(v); if(v) any=true; } if(any) out.push.apply(out,row); }
+    var hz=Pg?buildPackHazards(Pg):[]; return out.length||hz.length?{r:out,h:hz}:null; },
+  unpack:function(v){ var M=G.match; if(!M||M.host) return; if(v&&typeof v==='object'&&!Array.isArray(v)){ buildUnpackHazards(v.h); v=v.r; } else buildUnpackHazards(null); if(!Array.isArray(v)) return; var n=COMBAT.length+1, i, k;
+    for(i=0;i+n<=v.length&&i<ROYALE_MAX*n;i+=n){ var P=playerById(v[i]); if(!P) continue; var r=buildRun(P); if(!r) continue; var ch=false;
+      for(k=0;k<COMBAT.length;k++){ var val=buildNum(v[i+1+k])?Math.max(0,Math.min(SKMAX[COMBAT[k]]||0,v[i+1+k]|0)):0; if((r.ranks[COMBAT[k]]||0)!==val){ r.ranks[COMBAT[k]]=val; ch=true; } }
+      if(ch&&P===G.me){ G.st=stats(); chipsDirty=true; } } },
+  teardown:function(){ buildCard(false); S=buildFresh(); },
+  draft:function(){ return S.draft; }, card:function(){ return S.card; }
+};
+})();
+/* ---------- Parade Royale: items (lane E; ROYALE.md §16) ---------- */
+/* Packages (owner, 28 Oct: "not nearly enough packages"). The host drops a beating heart every ITEMS_EVERY from ITEMS_FROM
+   (ITEMS_MAX on the map, ITEM_LIFE each, inside the ring, placed by rotation round the living heads through serumSpot) and a
+   golden brain every GOLD_EVERY (GOLD_MAX): the first living head over one takes it. A heart spins the five-power roulette
+   (mrand) on the taker's own screen and the power lands on that player alone, at the Rampage durations (POWERS[].t),
+   ticking per player here (updateItems never runs in a match); a golden brain is a free draft (Royale.build.bonus). Items,
+   every player's powers and every Goliath ride the snapshot, so a guest draws the hearts, its own chip and ring, and
+   rivals' giants. Presentation rolls jrand(); outcomes mrand(). */
+(function(){
+var ITEMS_FROM=15, ITEMS_EVERY=15, ITEMS_MAX=6, GOLD_FROM=45, GOLD_EVERY=60, GOLD_MAX=2, ITEMS_NEAR=300, ITEMS_FAR=900, ITEMS_ARROW=700, ITEMS_SEND=1500;
+var S=itemsFresh();
+function itemsFresh(){ return {M:null,nextT:ITEMS_FROM,goldT:GOLD_FROM,seq:0,gfx:{},giants:[]}; }
+function itemsSync(){ var M=G&&G.match; if(M===S.M){ return; } S=itemsFresh(); S.M=M; if(G) G.items=[]; }
+function itemsNum(v){ return typeof v==='number'&&isFinite(v); }
+function itemsPush(ev){ G.match.events.push(ev); if(Royale.items&&Royale.items.onEvent) Royale.items.onEvent(ev); }
+function powerById(id){ for(var i=0;i<POWERS.length;i++) if(POWERS[i].id===id) return POWERS[i]; return null; }
+/* Host: a spot 300-900 px from the next head in turn, inside the ring, on clear street. */
+function itemsSpot(){ var P=nextLiving(); if(!P) return null; var was=G.cur; bindPlayer(P); var sp=null, t;
+  for(t=0;t<4&&!sp;t++){ sp=serumSpot(ITEMS_NEAR,ITEMS_FAR,mrand); if(sp&&royaleOutRing(sp.x,sp.y,ROYALE_RING_PEOPLE)) sp=null; }
+  bindPlayer(was); return sp; }
+function itemsDrop(kind){ var sp=itemsSpot(); if(!sp) return null; var it={id:++S.seq,kind:kind,x:Math.round(sp.x),y:Math.round(sp.y),t:0,ph:jrand()*TAU}; G.items.push(it); return it; }
+function itemsCount(kind){ var n=0, its=G.items||[]; for(var i=0;i<its.length;i++) if(its[i].kind===kind) n++; return n; }
+/* Host: the first living head over an item takes it; a heart's roulette is rolled here and the power lands on that player. */
+function itemsPickup(){
+  var its=G.items, ps=G.players, i, k;
+  for(i=its.length-1;i>=0;i--){ var it=its[i], best=null;
+    for(k=0;k<ps.length;k++){ var P=ps[k]; if(!P.alive) continue; var h=headOf(P), rr=h.r+ITEM_R; if(Math.abs(h.x-it.x)<rr&&Math.abs(h.y-it.y)<rr&&Math.hypot(h.x-it.x,h.y-it.y)<rr&&(!best||P.id<best.id)) best=P; }
+    if(!best) continue; its.splice(i,1);
+    if(it.kind==='heart'){ var p=POWERS[Math.floor(mrand()*POWERS.length)]; itemsPush({k:'x',l:'items',a:'got',id:best.id,c:it.id,x:it.x,y:it.y,p:p.id}); itemsGrant(best,p); }
+    else { itemsPush({k:'x',l:'items',a:'gold',id:best.id,c:it.id,x:it.x,y:it.y}); if(Royale.build&&Royale.build.bonus) Royale.build.bonus(best); } }
+}
+/* Host: the power on P after the roulette's spin (ROULETTE_T), through a per-player timer; the effects are the campaign's. */
+var ROULETTE_T=1.4;
+function itemsGrant(P,p){ (S.gfx[P.id]=S.gfx[P.id]||[]).push({p:p,t:ROULETTE_T}); }
+function itemsApply(P,p){ var was=G.cur; bindPlayer(P); var hd=G.head;
+  G.fx=G.fx||{}; G.fxMax=G.fxMax||{}; G.fx[p.id]=G.fxMax[p.id]=p.t; chipsDirty=true;
+  if(p.id==='god') G.hp=G.st.maxHp;
+  if(p.id==='giant'){ var sp=serumSpot(90,160,mrand)||{x:hd.x+90,y:hd.y}; G.giant={x:sp.x,y:sp.y,r:30,h:0,walk:0,bite:0}; }
+  if(p.id==='meat') for(var i=0;i<G.humans.length;i++){ var h=G.humans[i]; h.task=null; h.job=null; h.btnT=0; }
+  bindPlayer(was); itemsPush({k:'x',l:'items',a:'power',id:P.id,p:p.id}); }
+function itemsHost(dt){
+  var M=G.match, k, i;
+  if(M.clock>=S.nextT){ if(itemsCount('heart')>=ITEMS_MAX) S.nextT+=ITEMS_EVERY; else if(itemsDrop('heart')) S.nextT+=ITEMS_EVERY; else S.nextT=M.clock+1; }
+  if(M.clock>=S.goldT){ if(itemsCount('gold')>=GOLD_MAX) S.goldT+=GOLD_EVERY; else if(itemsDrop('gold')) S.goldT+=GOLD_EVERY; else S.goldT=M.clock+1; }
+  for(i=G.items.length-1;i>=0;i--){ G.items[i].t+=dt; if(G.items[i].t>=ITEM_LIFE) G.items.splice(i,1); }
+  itemsPickup();
+  for(k in S.gfx){ var q=S.gfx[k]; for(i=q.length-1;i>=0;i--){ q[i].t-=dt; if(q[i].t<=0){ var P=playerById(+k); if(P&&P.alive) itemsApply(P,q[i].p); q.splice(i,1); } } }
+}
+/* Every player's powers tick on the host (updateItems never runs in a match); the giant lumbers for its owner. */
+function itemsTick(dt){
+  forPlayers(function(P){ if(!P.alive){ G.giant=null; return; } var k;
+    if(G.fx) for(k in G.fx) if(G.fx[k]>0){ G.fx[k]-=dt; if(G.fx[k]<=0){ G.fx[k]=0; chipsDirty=true; if(k==='giant'&&G.giant){ fxParts(G.giant.x,G.giant.y,24,['#8fd14f','#2f5a1a'],1); G.giant=null; } } }
+    updateGiant(dt); });
+}
+/* ---- presentation, every device ---- */
+function itemsMe(fn){ var was=G.cur; if(G.me&&was!==G.me) bindPlayer(G.me); fn(); if(was&&was!==G.cur) bindPlayer(was); }
+function itemsEventOk(ev){ if(!ev||typeof ev!=='object'||!itemsNum(ev.id)) return false;
+  if(ev.a==='got') return itemsNum(ev.c)&&itemsNum(ev.x)&&itemsNum(ev.y)&&!!powerById(ev.p);
+  if(ev.a==='gold') return itemsNum(ev.c)&&itemsNum(ev.x)&&itemsNum(ev.y);
+  if(ev.a==='power') return !!powerById(ev.p);
+  return false; }
+function itemsPresent(ev){
+  var me=G.me, mine=me&&ev.id===me.id, i;
+  if(ev.a==='got'||ev.a==='gold'){
+    if(!G.match.host) for(i=G.items.length-1;i>=0;i--) if(G.items[i].id===ev.c) G.items.splice(i,1);
+    fxParts(ev.x,ev.y,18,ev.a==='got'?['#e9514e','#ffb3a7']:['#ffd65a','#fff0ca'],1); Snd.play('power',ev.x,ev.y);
+    if(mine){ Haptic.tap(20); if(ev.a==='got') itemsMe(function(){ G.roulette={t:0,dur:ROULETTE_T,pick:powerById(ev.p),done:true}; }); else itemsMe(function(){ stamp('GOLDEN BRAIN',2,G.head.x,G.head.y); }); } }
+  else if(ev.a==='power'){ var p=powerById(ev.p), P=playerById(ev.id); if(!P) return;
+    if(mine){ itemsMe(function(){ banner(':heart: '+p.name+'!'); G.flash=Math.max(G.flash||0,0.15); if(p.id==='god') addFloat(G.head.x,G.head.y-40,'FULL HEALTH','#a9df57',16); }); }
+    if(!G.match.host){ var o=P===G.cur?G:P; o.fx=o.fx||{}; o.fxMax=o.fxMax||{}; o.fx[p.id]=o.fxMax[p.id]=p.t; if(mine) chipsDirty=true; } }
+}
+/* The roulette on this device spins its 1.4 s and fades (the engine draws it; updateItems, which ticked it, never runs here). */
+function itemsRoulette(dt){ var R=G.roulette; if(!R) return; R.t+=dt; if(R.t>=R.dur+1.2) G.roulette=null; }
+/* A guest's own powers run down between snapshots so the chip never jumps. */
+function itemsGuestTick(dt){ forPlayers(function(P){ if(!P.alive||!G.fx) return; for(var k in G.fx) if(G.fx[k]>0) G.fx[k]=Math.max(0,G.fx[k]-dt); }); }
+/* ---- drawing: rivals' Goliaths (drawItems draws only the bound player's), a heart's edge arrow ---- */
+function itemsDrawOver(){ var ps=G.players||[], cx=G.cam.x, cy=G.cam.y, i;
+  if(G.match.host){ for(i=0;i<ps.length;i++){ var P=ps[i]; if(P===G.cur||!P.alive||!P.giant) continue; var g=P.giant; if(Math.abs(g.x-cx)>W/2+80||Math.abs(g.y-cy)>H/2+80) continue; drawGoliath(g); } }
+  else { var gs=S.giants; for(i=0;i+3<gs.length;i+=4){ if(gs[i]===(G.me&&G.me.id)) continue; if(Math.abs(gs[i+1]-cx)>W/2+80||Math.abs(gs[i+2]-cy)>H/2+80) continue; drawGoliath({x:gs[i+1],y:gs[i+2],r:30,h:gs[i+3]/100,walk:G.t*4,bite:0}); } } }
+function itemsDrawHud(){ var me=G.me; if(!me||!me.alive||G.match.phase!=='play') return; var hd=headOf(me), its=G.items||[], best=null, bd=ITEMS_ARROW, i;
+  for(i=0;i<its.length;i++){ var it=its[i], d=Math.hypot(it.x-hd.x,it.y-hd.y); if(d<bd){ bd=d; best=it; } }
+  if(!best) return; var ex=best.x-G.cam.x+W/2, ey=best.y-G.cam.y+H/2, top=Math.max(130,uiHudBottom()+60); if(ex>0&&ex<W&&ey>top&&ey<H) return;
+  var ccx=W/2, ccy=H/2, dx=ex-ccx, dy=ey-ccy, s=1; if(dx>0) s=Math.min(s,(W-40-ccx)/dx); if(dx<0) s=Math.min(s,(40-ccx)/dx); if(dy>0) s=Math.min(s,(H-60-ccy)/dy); if(dy<0) s=Math.min(s,(top-ccy)/dy);
+  var tx=ccx+dx*s, ty=ccy+dy*s, pulse=calm()?1:1+0.08*Math.sin(G.t*6);
+  ctx.save(); ctx.globalAlpha=0.9; Art.draw(best.kind==='heart'?'heart':'goldbrain',tx,ty,22*pulse); ctx.restore(); }
+
+Royale.items={
+  FROM:ITEMS_FROM, EVERY:ITEMS_EVERY, MAX:ITEMS_MAX, GOLD_FROM:GOLD_FROM, GOLD_EVERY:GOLD_EVERY, GOLD_MAX:GOLD_MAX, ROULETTE_T:ROULETTE_T,
+  update:function(dt){ var M=G.match; if(!M) return; itemsSync(); if(!G.items) G.items=[];
+    if(M.host&&M.phase==='play'){ itemsHost(dt); itemsTick(dt); } else if(!M.host) itemsGuestTick(dt);
+    itemsRoulette(dt); },
+  onEvent:function(ev){ if(!G.match||!itemsEventOk(ev)) return; itemsSync(); itemsPresent(ev); },
+  draw:function(layer){ if(!G.match) return; itemsSync(); if(layer==='over') itemsDrawOver(); else if(layer==='hud') itemsDrawHud(); },
+  /* §6.5: the items near the guest [id,kind(1 heart, 2 gold),x,y,…], every player's powers [id, meat, giant, god, invis, lunch (tenths)…], every giant [id,x,y,h×100…]. */
+  pack:function(Pg){ var M=G.match; if(!M||!M.host||!Pg) return null; itemsSync(); var hd=headOf(Pg), its=G.items||[], ps=G.players||[], o=[], f=[], g=[], i, k;
+    for(i=0;i<its.length;i++){ var it=its[i]; if(Math.abs(it.x-hd.x)<ITEMS_SEND&&Math.abs(it.y-hd.y)<ITEMS_SEND) o.push(it.id,it.kind==='heart'?1:2,it.x,it.y); }
+    for(i=0;i<ps.length;i++){ var P=ps[i]; if(!P.alive) continue; var fx=P===G.cur?G.fx:P.fx, any=false, row=[P.id]; for(k=0;k<POWERS.length;k++){ var v=fx&&fx[POWERS[k].id]>0?Math.ceil(fx[POWERS[k].id]*10):0; row.push(v); if(v) any=true; } if(any) f.push.apply(f,row);
+      var gi=P===G.cur?G.giant:P.giant; if(gi) g.push(P.id,Math.round(gi.x),Math.round(gi.y),Math.round((gi.h||0)*100)); }
+    return o.length||f.length||g.length?{o:o,f:f,g:g}:null; },
+  unpack:function(v){ var M=G.match; if(!M||M.host) return; itemsSync(); var its=G.items, i, k;
+    its.length=0; S.giants.length=0; if(!v||typeof v!=='object') return;
+    var o=Array.isArray(v.o)?v.o:[], f=Array.isArray(v.f)?v.f:[], g=Array.isArray(v.g)?v.g:[];
+    for(i=0;i+3<o.length&&i<ITEMS_MAX*8;i+=4) if(itemsNum(o[i])&&itemsNum(o[i+2])&&itemsNum(o[i+3])) its.push({id:o[i],kind:o[i+1]===2?'gold':'heart',x:o[i+2],y:o[i+3],t:0,ph:(o[i]*1.7)%TAU});
+    var n=POWERS.length+1; for(i=0;i+n<=f.length&&i<ROYALE_MAX*n;i+=n){ var P=playerById(f[i]); if(!P) continue; var fx=P===G.cur?(G.fx=G.fx||{}):(P.fx=P.fx||{}); for(k=0;k<POWERS.length;k++){ var val=itemsNum(f[i+1+k])?Math.max(0,f[i+1+k])/10:0; fx[POWERS[k].id]=val; } if(P===G.me) chipsDirty=true; }
+    for(i=0;i+3<g.length&&i<ROYALE_MAX*4;i+=4) if(itemsNum(g[i+1])&&itemsNum(g[i+2])) S.giants.push(g[i],g[i+1],g[i+2],g[i+3]|0); },
+  teardown:function(){ S=itemsFresh(); if(G){ G.items=[]; G.roulette=null; } },
+  grant:itemsGrant, apply:itemsApply, drop:itemsDrop, pending:function(){ return S.gfx; }, giants:function(){ return S.giants; }
+};
+})();
+/* ---------- Parade Royale: truce (lane B3; ROYALE.md §17) ---------- */
+/* Alliances (owner, 28 Oct: "we should be able to offer up alliances"). A tap on a rival's tag or arrow with no trick held
+   offers TRUCE?; they get a TRUCE_T card, YES or NO (a bot: yes when smaller, no when BOTS_NO times bigger). Allied heads
+   and lines pass through each other (fights skips the pair), the build's effects skip an ally, a mark sits on the ally's
+   tag and arrow, one ally at a time. Tapping the mark breaks it: BREAKING counts TRUCE_BREAK on both screens before bites
+   work again, so there is no betrayal from nowhere. Truces end at the last two ring steps ("No more truces.") and with
+   a death. The host decides everything; events are must-deliver; every player's ally and break clock ride the snapshot. */
+(function(){
+var TRUCE_T=6, TRUCE_BREAK=5, TRUCE_NO_CD=10, TRUCE_BOT_T=1, TRUCE_BOT_NO=1.5, TRUCE_BOT_BREAK=1.5, TRUCE_BOT_EVERY=5, TRUCE_LAST=2;
+var S=truceFresh();
+function truceFresh(){ return {M:null,offers:[],noCd:{},card:null,cardEl:null,cardT:0,chipT:0,chip:'',chipW:0,ended:false,botT:0,offeredT:0,offeredTo:0}; }
+function truceSync(){ var M=G&&G.match; if(M===S.M) return; truceCard(false); S=truceFresh(); S.M=M; }
+function truceNum(v){ return typeof v==='number'&&isFinite(v); }
+function trucePush(ev){ G.match.events.push(ev); if(Royale.truce&&Royale.truce.onEvent) Royale.truce.onEvent(ev); }
+function allied(P,Q){ return !!(P&&Q&&P!==Q&&P.ally===Q.id&&Q.ally===P.id); }
+function lastSteps(){ var R=G.match&&G.match.ring; return !!R&&R.step>=R.steps-TRUCE_LAST; }
+function mobN(P){ return (P===G.cur?G.segs:P.segs).length; }
+/* Host: the door for every choice; nothing is trusted. */
+function truceMsg(P,m){
+  var M=G.match; if(!M||!M.host||M.phase!=='play'||!m||typeof m!=='object'||!P||G.players.indexOf(P)<0||!P.alive) return false;
+  var i, Q;
+  if(m.a==='offer'){ if(lastSteps()||P.ally) return false; Q=truceNum(m.id)?playerById(m.id):null; if(!Q||Q===P||!Q.alive||Q.left||Q.ally) return false;
+    for(i=0;i<S.offers.length;i++) if(S.offers[i].from===P.id) return false; // one offer out at a time
+    if((S.noCd[P.id+':'+Q.id]||0)>0) return false; // they said no a moment ago
+    S.offers.push({from:P.id,to:Q.id,t:TRUCE_T}); trucePush({k:'x',l:'truce',a:'offer',from:P.id,to:Q.id,t:TRUCE_T}); return true; }
+  if(m.a==='answer'){ var from=truceNum(m.from)?m.from:0, yes=!!m.yes, o=null;
+    for(i=0;i<S.offers.length;i++) if(S.offers[i].to===P.id&&S.offers[i].from===from){ o=S.offers[i]; S.offers.splice(i,1); break; }
+    if(!o) return false; Q=playerById(from);
+    if(yes&&Q&&Q.alive&&!Q.ally&&!P.ally&&!lastSteps()){ P.ally=Q.id; Q.ally=P.id; P.allyBreakT=Q.allyBreakT=0; trucePush({k:'x',l:'truce',a:'ally',a1:Q.id,a2:P.id}); return true; }
+    S.noCd[from+':'+P.id]=TRUCE_NO_CD; trucePush({k:'x',l:'truce',a:'no',from:from,to:P.id}); return true; }
+  if(m.a==='break'){ Q=P.ally?playerById(P.ally):null; if(!Q||!allied(P,Q)||P.allyBreakT>0) return false;
+    P.allyBreakT=Q.allyBreakT=TRUCE_BREAK; trucePush({k:'x',l:'truce',a:'breaking',a1:P.id,a2:Q.id,by:P.id,t:TRUCE_BREAK}); return true; }
+  return false;
+}
+function truceEnd(P,Q,why){ if(P){ P.ally=0; P.allyBreakT=0; } if(Q){ Q.ally=0; Q.allyBreakT=0; } trucePush({k:'x',l:'truce',a:'broken',a1:P?P.id:0,a2:Q?Q.id:0,why:why||'broken'}); }
+function truceHost(dt){
+  var ps=G.players, i, k, P, Q;
+  for(i=S.offers.length-1;i>=0;i--){ var o=S.offers[i]; o.t-=dt; P=playerById(o.from); Q=playerById(o.to);
+    if(!P||!Q||!P.alive||!Q.alive||o.t<=0||lastSteps()){ S.offers.splice(i,1); trucePush({k:'x',l:'truce',a:'no',from:o.from,to:o.to}); continue; }
+    if(Q.bot&&TRUCE_T-o.t>=TRUCE_BOT_T) truceMsg(Q,{a:'answer',from:o.from,yes:mobN(Q)*TRUCE_BOT_NO<=mobN(P)||mobN(Q)<mobN(P)}); } // the bot answers: yes when it is the smaller
+  for(k in S.noCd) if(S.noCd[k]>0) S.noCd[k]-=dt;
+  if(!S.ended&&lastSteps()){ S.ended=true; for(i=0;i<ps.length;i++){ P=ps[i]; if(P.ally&&P.ally>P.id){ Q=playerById(P.ally); truceEnd(P,Q,'end'); } else if(P.ally&&!playerById(P.ally)) truceEnd(P,null,'end'); } trucePush({k:'x',l:'truce',a:'end'}); }
+  for(i=0;i<ps.length;i++){ P=ps[i]; if(!P.ally) continue; Q=playerById(P.ally);
+    if(!Q||!Q.alive||!P.alive||Q.ally!==P.id){ truceEnd(P,Q&&Q.ally===P.id?Q:null,'death'); continue; }
+    if(P.allyBreakT>0&&P.id<Q.id){ P.allyBreakT-=dt; Q.allyBreakT=P.allyBreakT; if(P.allyBreakT<=0) truceEnd(P,Q,'broken'); } }
+  S.botT-=dt; if(S.botT<=0){ S.botT=TRUCE_BOT_EVERY; for(i=0;i<ps.length;i++){ P=ps[i]; if(!P.bot||!P.alive||!P.ally||P.allyBreakT>0) continue; Q=playerById(P.ally); if(Q&&Q.alive&&mobN(P)>=mobN(Q)*TRUCE_BOT_BREAK) truceMsg(P,{a:'break'}); } }
+}
+/* ---- presentation, every device ---- */
+function truceMe(fn){ var was=G.cur; if(G.me&&was!==G.me) bindPlayer(G.me); fn(); if(was&&was!==G.cur) bindPlayer(was); }
+function truceName(id){ var P=playerById(id); return P?P.name:'Someone'; }
+function truceEventOk(ev){ if(!ev||typeof ev!=='object') return false;
+  if(ev.a==='offer') return truceNum(ev.from)&&truceNum(ev.to)&&truceNum(ev.t);
+  if(ev.a==='no') return truceNum(ev.from)&&truceNum(ev.to);
+  if(ev.a==='ally') return truceNum(ev.a1)&&truceNum(ev.a2);
+  if(ev.a==='breaking') return truceNum(ev.a1)&&truceNum(ev.a2)&&truceNum(ev.by)&&truceNum(ev.t);
+  if(ev.a==='broken') return truceNum(ev.a1)&&truceNum(ev.a2)&&typeof ev.why==='string';
+  if(ev.a==='end') return true;
+  return false; }
+function trucePresent(ev){
+  var me=G.me, meId=me?me.id:0, host=G.match.host, P, Q;
+  if(ev.a==='offer'){ if(ev.to===meId&&me.alive){ S.card={from:ev.from,t:ev.t}; truceCard(true); Snd.play('ui'); Haptic.tap(20); } if(ev.from===meId){ S.offeredT=TRUCE_T; S.offeredTo=ev.to; } }
+  else if(ev.a==='no'){ if(ev.from===meId){ S.offeredT=0; truceMe(function(){ stamp('NO TRUCE',1,G.head.x,G.head.y); }); } if(ev.to===meId){ S.card=null; truceCard(false); } }
+  else if(ev.a==='ally'){ P=playerById(ev.a1); Q=playerById(ev.a2); if(!host&&P&&Q){ P.ally=Q.id; Q.ally=P.id; P.allyBreakT=Q.allyBreakT=0; }
+    if(ev.a1===meId||ev.a2===meId){ S.offeredT=0; S.card=null; truceCard(false); var other=ev.a1===meId?ev.a2:ev.a1; truceMe(function(){ stamp('TRUCE',2,G.head.x,G.head.y); }); banner('Truce with '+truceName(other)+'. Tap the mark to break it.'); Snd.play('power'); } }
+  else if(ev.a==='breaking'){ P=playerById(ev.a1); Q=playerById(ev.a2); if(!host&&P&&Q){ P.allyBreakT=Q.allyBreakT=ev.t; }
+    if(ev.a1===meId||ev.a2===meId){ var who=ev.by===meId?'You':truceName(ev.by); banner(who+(ev.by===meId?' are':' is')+' breaking the truce. '+Math.round(ev.t)+' s.'); Snd.play('heat'); Haptic.tap(30); } }
+  else if(ev.a==='broken'){ P=playerById(ev.a1); Q=playerById(ev.a2); if(!host){ if(P){ P.ally=0; P.allyBreakT=0; } if(Q){ Q.ally=0; Q.allyBreakT=0; } }
+    if((ev.a1===meId||ev.a2===meId)&&ev.why==='broken') truceMe(function(){ stamp('TRUCE OVER',2,G.head.x,G.head.y); }); }
+  else if(ev.a==='end'){ banner('No more truces.'); }
+}
+/* ---- the card: TRUCE? YES / NO, the match running behind it ---- */
+var TRUCE_CSS=
+  '#hud.hidden~#royale #royaleTruce{display:none}'+
+  '#royaleTruce .rcCard{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:6;width:min(380px,calc(100% - 24px));box-sizing:border-box;background:#232a33;border:3px solid #171923;border-radius:18px;box-shadow:0 6px 0 #171923;padding:10px 10px 10px;animation:rcIn .25s ease-out both}'+
+  '#royaleTruce .rcHead{display:flex;align-items:baseline;gap:8px;margin:0 4px 8px}'+
+  '#royaleTruce .rcT{font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:1px;line-height:1;color:#efe7d2;text-shadow:3px 3px 0 #171923}'+
+  '#royaleTruce .rcK{font:600 13px var(--font);color:#d9cfb6;margin-left:auto}'+
+  '#royaleTruce .rcGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}'+
+  '#royaleTruce .rcBtn{min-width:0;background:#faefdc;color:#171923;border:3px solid #171923;border-radius:14px;box-shadow:0 4px 0 #171923;padding:12px 4px;font-family:var(--display);font-weight:400;font-size:24px;letter-spacing:1px;cursor:pointer;touch-action:manipulation}'+
+  '#royaleTruce .rcBtn:active{transform:translateY(2px);box-shadow:0 2px 0 #171923}'+
+  '#royaleTruce .rcBar{height:5px;margin:10px 4px 0;background:rgba(239,231,210,.18);border-radius:3px;overflow:hidden}'+
+  '#royaleTruce .rcBar span{display:block;height:100%;background:#efe7d2;transform-origin:left;animation:rcTime '+TRUCE_T+'s linear both}'+
+  '@keyframes rcTime{from{transform:scaleX(1)}to{transform:scaleX(0)}}'+
+  '@keyframes rcIn{from{transform:translate(-50%,24px);opacity:0}to{transform:translate(-50%,0);opacity:1}}'+
+  '@media (prefers-reduced-motion: reduce){#royaleTruce .rcCard{animation:none}}';
+function truceCardHtml(){ var c=S.card; return '<div class="rcCard" role="dialog" aria-label="A truce offer"><div class="rcHead"><span class="rcT">TRUCE?</span><span class="rcK">'+truceName(c.from).replace(/[<>&]/g,'')+' offers one.</span></div><div class="rcGrid"><button type="button" class="rcBtn" data-t="yes">YES</button><button type="button" class="rcBtn" data-t="no">NO</button></div><div class="rcBar"><span></span></div></div>'; }
+function truceCardTap(e){ var t=e&&e.target, b=t&&t.closest?t.closest('[data-t]'):t, v=b&&b.getAttribute?b.getAttribute('data-t'):null; if(!v) return;
+  if(e.preventDefault) e.preventDefault(); if(e.stopPropagation) e.stopPropagation(); Snd.play('ui'); Royale.truce.answer(v==='yes'); }
+function truceCard(on){ if(S.card===null&&on) return; var el=Royale.mount('royaleTruce',on?truceCardHtml():'',TRUCE_CSS); if(el&&S.cardEl!==el){ S.cardEl=el; if(el.addEventListener) el.addEventListener('click',truceCardTap); } }
+/* ---- the tap: a rival's tag or arrow with no trick held offers; the ally's mark breaks ---- */
+function truceTap(sx,sy){
+  var M=G&&G.match, me=M&&G.me; if(!me||state!=='play'||M.phase!=='play'||!me.alive) return false;
+  if(me.trick&&me.trick.kind&&!me.trick.target) return false; // the trick lane's tap
+  var id=Royale.ui&&Royale.ui.hit?Royale.ui.hit(sx,sy):0; if(!id||id===me.id) return false;
+  if(me.ally===id){ Royale.truce.breakIt(); return true; }
+  if(me.ally||lastSteps()) return false;
+  return Royale.truce.offer(id);
+}
+function trucePointer(e){ try{ var r=canvas.getBoundingClientRect?canvas.getBoundingClientRect():null, sx=e.clientX-(r?r.left:0), sy=e.clientY-(r?r.top:0); if(truceTap(sx,sy)){ if(e.stopPropagation) e.stopPropagation(); if(e.preventDefault) e.preventDefault(); } }catch(err){} }
+if(typeof document!=='undefined'&&document.addEventListener) document.addEventListener('pointerdown',trucePointer,true);
+/* The mark on an ally's tag or arrow (ui.js calls it): two linked rings in bone; red with the count while breaking. */
+function truceMark(x,y,P){ var br=P&&P.allyBreakT>0, col=br?'#ff5a66':'#efe7d2';
+  ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=2.5; ctx.globalAlpha=0.95; ctx.beginPath(); ctx.arc(x-4,y,5.5,0,TAU); ctx.stroke(); ctx.beginPath(); ctx.arc(x+4,y,5.5,0,TAU); ctx.stroke();
+  if(br){ ctx.font='900 11px Rubik,system-ui,sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillStyle=col; ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.75)'; var t=String(Math.ceil(P.allyBreakT)); ctx.strokeText(t,x+12,y); ctx.fillText(t,x+12,y); }
+  ctx.restore(); }
+/* A chip while my offer is out. */
+function truceChip(){ if(!(S.offeredT>0)) return; var txt='TRUCE OFFERED · '+truceName(S.offeredTo).toUpperCase();
+  ctx.save(); ctx.font='400 18px Bangers, Impact, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  if(S.chip!==txt){ S.chip=txt; S.chipW=Math.ceil(ctx.measureText(txt).width||100); }
+  var h=30, w=S.chipW+30, x=Math.round(W/2-w/2), y=Math.round(Math.min(H*0.4,uiHudBottom()+78));
+  ctx.fillStyle='rgba(15,13,20,.86)'; ctx.strokeStyle='#efe7d2'; ctx.lineWidth=2; rr(x,y,w,h,h/2); ctx.fill(); ctx.stroke(); ctx.fillStyle='#efe7d2'; ctx.fillText(txt,x+w/2,y+h/2+1); ctx.restore(); }
+
+Royale.truce={
+  T:TRUCE_T, BREAK:TRUCE_BREAK, NO_CD:TRUCE_NO_CD, LAST:TRUCE_LAST, allied:allied, mark:truceMark, tap:truceTap,
+  update:function(dt){ var M=G.match; if(!M) return; truceSync(); if(M.host&&M.phase==='play') truceHost(dt);
+    if(S.card){ S.card.t-=dt; if(S.card.t<=0||M.phase!=='play'||!G.me||!G.me.alive){ S.card=null; truceCard(false); } }
+    if(S.offeredT>0) S.offeredT-=dt;
+    if(!M.host){ var ps=G.players||[], i; for(i=0;i<ps.length;i++) if(ps[i].allyBreakT>0) ps[i].allyBreakT=Math.max(0,ps[i].allyBreakT-dt); } },
+  draw:function(layer){ if(!G.match) return; truceSync(); if(layer==='hud'&&G.match.phase==='play') truceChip(); },
+  onMsg:truceMsg,
+  onEvent:function(ev){ if(!G.match||!truceEventOk(ev)) return; truceSync(); trucePresent(ev); },
+  offer:function(id){ var me=G.me, M=G.match; if(!M||!me) return false; if(M.host) return truceMsg(me,{a:'offer',id:id}); S.offeredT=TRUCE_T; S.offeredTo=id; return !!(Royale.net&&Royale.net.sendLane&&Royale.net.sendLane('truce',{a:'offer',id:id})); },
+  answer:function(yes){ var me=G.me, M=G.match, c=S.card; if(!M||!me||!c) return false; S.card=null; truceCard(false); if(M.host) return truceMsg(me,{a:'answer',from:c.from,yes:!!yes}); return !!(Royale.net&&Royale.net.sendLane&&Royale.net.sendLane('truce',{a:'answer',from:c.from,yes:!!yes})); },
+  breakIt:function(){ var me=G.me, M=G.match; if(!M||!me||!me.ally) return false; if(M.host) return truceMsg(me,{a:'break'}); return !!(Royale.net&&Royale.net.sendLane&&Royale.net.sendLane('truce',{a:'break'})); },
+  /* §6.5: every player's ally and break clock, [id, ally, breakT×10, …]. */
+  pack:function(Pg){ var M=G.match; if(!M||!M.host) return null; var ps=G.players||[], out=[], i; for(i=0;i<ps.length;i++){ var P=ps[i]; if(P.ally) out.push(P.id,P.ally,Math.ceil((P.allyBreakT||0)*10)); } return out.length?out:null; },
+  unpack:function(v){ var M=G.match; if(!M||M.host) return; var ps=G.players||[], i, seen={}; if(Array.isArray(v)) for(i=0;i+2<v.length&&i<ROYALE_MAX*3;i+=3){ var P=playerById(v[i]); if(!P||!truceNum(v[i+1])) continue; P.ally=v[i+1]|0; P.allyBreakT=truceNum(v[i+2])?Math.max(0,v[i+2])/10:0; seen[P.id]=1; }
+    for(i=0;i<ps.length;i++) if(!seen[ps[i].id]){ ps[i].ally=0; ps[i].allyBreakT=0; } },
+  teardown:function(){ truceCard(false); S=truceFresh(); },
+  offers:function(){ return S.offers; }, card:function(){ return S.card; }
 };
 })();
 /* ---------- Parade Royale: ui (lane F; ROYALE.md §2, §4, §6.2; docs/royale/briefs/F-show.md) ---------- */
@@ -11111,7 +11705,7 @@ var UI_NEM=[
 var UI_NEM_NONE='Nobody ate you. Everyone noticed.', UI_NEM_KEY='horde_royale_nem';
 /* The death stamp, one word per cause, and the banner when a player did it. */
 var UI_DEATH={people:'PUT DOWN',ghost:'HAUNTED',ring:'BURNED',eaten:'FLATTENED',horde:'OUT OF ZOMBIES',hazard:'WRONG STEP',hunter:'NO CAMPING',car:'RUN OVER'};
-var UI_KILLER={eaten:'{n} won the head-on.',horde:'{n} had your last zombie.',ghost:'{n}\'s ghost had you.'}, UI_KILLER_ANY='{n} finished you off.';
+var UI_KILLER={eaten:'{n} won the head-on.',horde:'{n} had your last zombie.',ghost:'{n}\'s mini boss had you.'}, UI_KILLER_ANY='{n} finished you off.';
 var UI_STATS=[['peak','horde'],['eaten','eaten'],['bites','bites'],['survived','survived']];
 
 /* File-local state, reset whenever G.match is a new object. uiPair[by][of] = {first: match clock of the first zombie by took
@@ -11203,9 +11797,13 @@ function uiPickArrows(){
   if(a) out.push(a); if(b) out.push(b);
   var R=M&&M.revenge?uiPlayer(M.revenge):null;
   if(R&&R!==G.me&&R.alive&&R!==a&&R!==b&&uiOff(R.head.x,R.head.y)) out.push(R);
+  var K=M&&M.crown?uiPlayer(M.crown):null; // the crown always has an arrow (owner, 28 Oct)
+  if(K&&K!==G.me&&K.alive&&K!==a&&K!==b&&K!==R&&uiOff(K.head.x,K.head.y)) out.push(K);
   return out;
 }
 
+/* A player's whole horde: the live line on the host (the bound one in G), the snapshot's count on a guest. */
+function uiMobN(P){ if(P===G.cur) return G.segs.length; if(G.match&&!G.match.host&&P.netN!==undefined) return P.netN|0; return (P.segs||[]).length; }
 /* ----- in the world (draw('over'), inside the world transform) ----- */
 function uiTag(text,x,y,col,alpha){
   ctx.globalAlpha=alpha; ctx.font='800 12px Rubik,system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -11224,7 +11822,9 @@ function uiDrawOver(){
     if(crowned){ uiCrownAt(hd.x,hd.y-hd.r-9+bob,24); y-=17; }
     if(P===G.me) continue;
     var d=Math.sqrt((hd.x-cx)*(hd.x-cx)+(hd.y-cy)*(hd.y-cy)), al=Math.max(0.45,Math.min(1,1.25-d/700));
-    uiTag(P.name,hd.x,y,uiCol(P),al);
+    var tagTxt=P.name+' · '+uiMobN(P), topF=Royale.build&&Royale.build.top?Royale.build.top(P):null; uiTag(tagTxt,hd.x,y,uiCol(P),al); // the size on the tag (owner, 28 Oct: you can read the fight)
+    if(topF){ ctx.globalAlpha=al; Art.draw(topF,hd.x+ctx.measureText(tagTxt).width/2+11,y,15); ctx.globalAlpha=1; } // …and the build's strongest family
+    if(Royale.truce&&Royale.truce.allied(G.me,P)) Royale.truce.mark(hd.x-ctx.measureText(tagTxt).width/2-14,y,P); // the ally's mark (§17)
     if(M.revenge&&P.id===M.revenge) uiMarker(hd.x,y-14+bob); }
   var ms=G.minis||[];
   for(i=0;i<ms.length;i++){ var m=ms[i]; if(!m.ghost||m.dead) continue; var GP=typeof m.ghost==='object'?m.ghost:uiPlayer(m.ghost); if(!GP) continue;
@@ -11244,7 +11844,9 @@ function uiArrow(P,crowned,revenge){
   ctx.restore();
   if(crowned) uiCrownAt(tx,ty-24,18);
   ctx.font='800 12px Rubik,system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.lineWidth=3; ctx.fillStyle=revenge?'#ff5a66':'#efe7d2'; ctx.strokeText(P.name,tx,ty+28); ctx.fillText(P.name,tx,ty+28);
+  var lbl=P.name+' · '+uiMobN(P);
+  ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.lineWidth=3; ctx.fillStyle=revenge?'#ff5a66':'#efe7d2'; ctx.strokeText(lbl,tx,ty+28); ctx.fillText(lbl,tx,ty+28);
+  if(Royale.truce&&Royale.truce.allied(G.me,P)) Royale.truce.mark(tx,ty+46,P); // the ally's mark (§17)
 }
 /* Where the HUD's rows really end (floor line, slot row, chips; the Claude viewer's offset included): read from the page
    twice a second, not every frame. Falls back to the game's own safe box. */
@@ -11255,6 +11857,44 @@ function uiHudBottom(){
   if(!(b>0)){ var ct=0; try{ ct=parseInt(document.documentElement.style.getPropertyValue('--chrome-top'),10)||0; }catch(e){} b=84+ct; } // no layout to read
   uiHudY=b; return uiHudY;
 }
+/* ----- A6, the duel strip (owner, 28 Oct; a trial: DUEL_STRIP 0 hides it and the words) -----
+   When a rival's head has been within DUEL_R of yours for DUEL_ON, a strip under the match strip: both names in their
+   colours, both horde sizes, a bar tipped by the ratio, and each blow flying off it (+n taken, -n lost). It stays while
+   that rival is in range and DUEL_HOLD after. Both sides get one word per blow: the biter CUT ×n (HELD against a brace), the
+   victim SAM TOOK n (BRACED). A cut of ten or more goes in the feed. Presentation only; sizes from the live lines on the
+   host and the snapshot's counts on a guest. */
+var DUEL_STRIP=1, DUEL_R=500, DUEL_ON=1, DUEL_HOLD=1.5, DUEL_BLOW_T=1.1, DUEL_FEED_N=10;
+var uiDuel={P:null,t:0,hold:0}, uiBlows=[];
+function uiDuelTick(dt){ var me=G.me, M=G.match;
+  if(!DUEL_STRIP||!me||!me.alive||!M||M.phase!=='play'){ uiDuel.P=null; uiDuel.t=0; uiDuel.hold=0; return; }
+  var hd=headOf(me), ps=G.players||[], best=null, bd=DUEL_R, i, cur=uiDuel.P, curIn=false;
+  for(i=0;i<ps.length;i++){ var P=ps[i]; if(P===me||!P.alive) continue; var h=headOf(P), d=Math.hypot(h.x-hd.x,h.y-hd.y); if(P===cur&&d<DUEL_R) curIn=true; if(d<bd){ bd=d; best=P; } }
+  if(cur&&curIn){ uiDuel.t+=dt; uiDuel.hold=0; return; } // the rival you are in it with keeps the strip while in range
+  if(best){ uiDuel.P=best; uiDuel.t=cur&&cur!==best&&uiDuel.t>=DUEL_ON?DUEL_ON:dt; uiDuel.hold=0; return; } // a new rival: the strip switches at once if it was up
+  if(cur){ uiDuel.hold+=dt; uiDuel.t+=dt; if(uiDuel.hold>=DUEL_HOLD){ uiDuel.P=null; uiDuel.t=0; uiDuel.hold=0; } }
+}
+function uiDuelAlpha(){ if(!uiDuel.P||uiDuel.t<DUEL_ON) return 0; var a=Math.min(1,(uiDuel.t-DUEL_ON)/0.3); if(uiDuel.hold>0) a*=Math.max(0,1-uiDuel.hold/DUEL_HOLD); return a; }
+/* A bite event, on every device that saw it (host: fights at push time; guest: net). */
+function uiBlow(ev){ var me=G.me?G.me.id:0; if(!DUEL_STRIP||!me||!ev||ev.k!=='bite') return;
+  var K=uiPlayer(ev.by), V=uiPlayer(ev.of), n=ev.n|0, lost=ev.lost|0;
+  if(ev.of===me&&V){ var was=G.cur; bindPlayer(V); stamp(ev.held?'BRACED':(K?K.name.toUpperCase()+' TOOK ':'LOST ')+lost,lost>=DUEL_FEED_N?3:2,G.head.x,G.head.y); if(was) bindPlayer(was); }
+  if(ev.by===me||ev.of===me){ uiBlows.push({t:0,mine:ev.by===me,n:ev.by===me?n:lost,held:!!ev.held}); while(uiBlows.length>6) uiBlows.shift(); }
+  if(n>=DUEL_FEED_N&&K&&V&&(ev.by===me||ev.of===me)){ uiFeed.push({a:K,verb:'took '+n+' off',b:V,t:0}); /* only my own duels (owner, 28 Oct: too many notifications) */ while(uiFeed.length>UI_FEED_N) uiFeed.shift(); }
+}
+function uiDrawDuel2(y){ var a=uiDuelAlpha(), R=uiDuel.P; if(a<=0||!R) return;
+  var me=G.me, mn=uiMobN(me), rn=uiMobN(R), tot=Math.max(1,mn+rn), bw=Math.min(220,W*0.52), bx=W/2-bw/2, bh=7, mc=uiCol(me), rc=uiCol(R), i;
+  ctx.globalAlpha=a; ctx.font='800 12px Rubik,system-ui,sans-serif'; ctx.textBaseline='middle'; ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.75)';
+  var lt=(me.name||'You')+' · '+mn, rt=(R.name||'')+' · '+rn;
+  ctx.textAlign='right'; ctx.strokeText(lt,bx-8,y); ctx.fillStyle=mc; ctx.fillText(lt,bx-8,y);
+  ctx.textAlign='left'; ctx.strokeText(rt,bx+bw+8,y); ctx.fillStyle=rc; ctx.fillText(rt,bx+bw+8,y);
+  ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(bx-1,y-bh/2-1,bw+2,bh+2);
+  var split=bx+bw*mn/tot; ctx.fillStyle=mc; ctx.fillRect(bx,y-bh/2,split-bx,bh); ctx.fillStyle=rc; ctx.fillRect(split,y-bh/2,bx+bw-split,bh);
+  ctx.fillStyle='#efe7d2'; ctx.fillRect(split-1,y-bh/2-2,2,bh+4);
+  ctx.font='900 14px Rubik,system-ui,sans-serif'; ctx.textAlign='center';
+  for(i=0;i<uiBlows.length;i++){ var b=uiBlows[i], u=Math.min(1,b.t/DUEL_BLOW_T); if(u>=1) continue; var txt=b.held?'HELD':(b.mine?'+':'−')+b.n, bxx=split+(b.mine?-1:1)*(22+44*u), byy=y+16+14*u; // off the split, under the bar, away from the match strip
+    ctx.globalAlpha=a*(1-u*u); ctx.strokeText(txt,bxx,byy); ctx.fillStyle=b.mine?mc:rc; ctx.fillText(txt,bxx,byy); }
+  ctx.globalAlpha=1;
+}
 function uiDrawHud(){
   var M=G.match; if(M.phase!=='play'&&M.phase!=='drop') return;
   var list=uiPickArrows();
@@ -11262,12 +11902,13 @@ function uiDrawHud(){
   var n=0, ps=G.players||[]; for(i=0;i<ps.length;i++) if(ps[i].alive) n++;
   var left=Math.max(0,Math.ceil((M.length||0)-(M.clock||0)));
   var kills=G.me?(uiKillN[G.me.id]||0):0;
-  if(n!==uiStripN||left!==uiStripS||kills!==uiStripK){ uiStripN=n; uiStripS=left; uiStripK=kills; uiStrip=n+' alive · '+fmt(left)+(kills>0?' · '+kills:''); }
+  if(n!==uiStripN||left!==uiStripS||kills!==uiStripK){ uiStripN=n; uiStripS=left; uiStripK=kills; uiStrip=n+' alive · '+(left>0?fmt(left):'OVERTIME')+(kills>0?' · '+kills:''); } // past the length the ring is nothing and everyone burns until one head is left
   var y=Math.min(H*0.35,uiHudBottom()+14);
   ctx.font='800 13px Rubik,system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
   var sx=W/2+(kills>0?-9:0); // your takedowns: a count after the clock with the bite badge beside it
   ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.75)'; ctx.strokeText(uiStrip,sx,y); ctx.fillStyle='#efe7d2'; ctx.fillText(uiStrip,sx,y);
   if(kills>0) Art.draw('bite',sx+ctx.measureText(uiStrip).width/2+11,y,18);
+  if(DUEL_STRIP&&M.phase==='play') uiDrawDuel2(y+22);
 }
 
 /* ----- the end screen ----- */
@@ -11321,7 +11962,7 @@ function uiEndHtml(result){
     if(b){ h+='<span class="re-st'+(b.rank===1?' top':'')+'"><i>'+b.label+'</i><b id="'+sid+'">'+txt+'</b></span>'; if(b.k!=='survived') count.push([sid,Math.round(b.v)]); }
     h+='</li>'; }
   h+='</ol>';
-  for(i=0;i<order.length;i++){ var g=uiStats(order[i]).ghostTaken||0; if(g>0) h+='<div class="re-ghost">'+uiEsc(order[i].name)+' took '+g+' zombie'+(g===1?'':'s')+' off the living as a ghost.</div>'; }
+  for(i=0;i<order.length;i++){ var g=uiStats(order[i]).ghostTaken||0; if(g>0) h+='<div class="re-ghost">'+uiEsc(order[i].name)+' took '+g+' zombie'+(g===1?'':'s')+' off the living as a mini boss.</div>'; }
   if(line) h+='<div class="close re-nem">'+uiEsc(line)+'</div>';
   h+='<div class="re-btns">';
   if(nem) h+='<button class="big re-rev" id="reRevenge" data-nem="'+nem.id+'">REVENGE</button>';
@@ -11350,12 +11991,19 @@ function uiHideEnd(){ var el=$('royaleEnd'); if(el&&el.innerHTML) el.innerHTML='
    stamp, the takedown sound, a shake, a buzz and a flash. Presentation only: jrand and the juice helpers, never mrand.
    Every device sees the same deaths in the same order (NET_MUST.death), so the streaks agree. */
 var UI_FLARE_T=1.5, UI_STREAK_T=12, UI_FEED_T=5, UI_FEED_N=3, UI_WAVE_T=0.6, UI_FLASH_T=0.3;
+/* The takedown beat (owner, 28 Oct: "the shaking is waaaay too much", "the euphoria hasn't been hit"): a shake of UI_SHAKE (the
+   old one was forty times a normal hit), the world punched in to UI_PUNCH for UI_PUNCH_T on the killer's screen, the
+   victim's line bursting in its colour and streaming into the killer's (host: its strays run home for UI_STREAM_T), the
+   victim's count flying to the strip (UI_FLY_T), a sting tier that grows with the size eaten, a buzz pattern, CHAMPION
+   DOWN for the crown. */
+var UI_SHAKE=0.25, UI_PUNCH=0.12, UI_PUNCH_T=0.6, UI_STREAM_T=2, UI_FLY_T=0.8, UI_BIG=30;
+var uiPunchT=0, uiFlyers=[];
 var UI_STREAK=['DEVOURED','DEVOURED','DOUBLE','TRIPLE','MASSACRE'];
-var UI_FEED_VERB={eaten:'flattened',horde:'had the last of',ghost:'haunted'}, UI_FEED_ATE='ate';
+var UI_FEED_VERB={eaten:'flattened',horde:'had the last of',ghost:'bossed'}, UI_FEED_ATE='ate';
 var UI_FEED_SOLO={ring:'burned.',people:'was put down.',hazard:'stepped wrong.',hunter:'camped too long.',car:'was run over.',quit:'left.'}, UI_FEED_GONE='went down.';
 var UI_LEFT={3:'Three hordes left.',2:'Last two.'};
 var uiFeed=[], uiWaves=[], uiFlash=null, uiKillLog={}, uiKillN={}, uiBlood=false, uiLastKill=null;
-function uiResetShow(){ uiFeed.length=0; uiWaves.length=0; uiFlash=null; uiKillLog={}; uiKillN={}; uiBlood=false; uiLastKill=null; uiStreakNet={}; uiBounces.length=0; uiBounceSeq=0; uiBounceSeen=0; }
+function uiResetShow(){ uiFeed.length=0; uiBlows.length=0; uiDuel.P=null; uiDuel.t=0; uiDuel.hold=0; uiFlyers.length=0; uiPunchT=0; if(G&&G.camZoom) G.camZoom=1; uiWaves.length=0; uiFlash=null; uiKillLog={}; uiKillN={}; uiBlood=false; uiLastKill=null; uiStreakNet={}; uiBounces.length=0; uiBounceSeq=0; uiBounceSeen=0; }
 function uiSegsOf(P){ return P===G.cur?G.segs:P.segs; }
 function uiDrawAura(){
   var ps=G.players||[], cx=G.cam.x, cy=G.cam.y, mx=W/2+80, my=H/2+80, i, k;
@@ -11367,9 +12015,25 @@ function uiDrawAura(){
     if(Math.abs(hd.x-cx)>mx||Math.abs(hd.y-cy)>my) continue;
     ctx.globalAlpha=0.3+0.3*fl; ctx.beginPath(); ctx.arc(hd.x,hd.y,hd.r*(2.1+fl*1.3),0,TAU); ctx.fill();
     ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=3+3*fl; ctx.beginPath(); ctx.arc(hd.x,hd.y,hd.r+6+fl*8,0,TAU); ctx.stroke();
-    var sl=uiStreakOf(P); if(sl>0) uiDrawStreak(P,hd,col,sl); }
+    var sl=uiStreakOf(P); if(sl>0) uiDrawStreak(P,hd,col,sl);
+    uiDrawDuel(P,hd); }
+  uiDrawDazed();
   ctx.globalAlpha=1;
 }
+/* The duel's state on a head (ROYALE.md §4.1, owner 28 Oct): a staggered head drags a dark dashed ring; a braced one wears a
+   white arc that shrinks as the brace runs out, then a faint arc growing back while it cools. Host fields, or the fights lane's pack. */
+function uiDrawDuel(P,hd){ var o=P===G.cur?G:P;
+  if(o.staggerT>0){ ctx.globalAlpha=0.75; ctx.strokeStyle='#2a1a1a'; ctx.lineWidth=3; ctx.setLineDash([5,6]); ctx.lineDashOffset=calm()?0:G.t*40; ctx.beginPath(); ctx.arc(hd.x,hd.y,hd.r+14,0,TAU); ctx.stroke(); ctx.setLineDash([]); }
+  var a=o.braceT>0?Math.PI*Math.min(1,o.braceT/BRACE_T):o.braceCd>0?Math.PI*(1-Math.min(1,o.braceCd/(BRACE_T+BRACE_CD))):0;
+  if(a>0){ ctx.globalAlpha=o.braceT>0?0.95:0.3; ctx.strokeStyle='#ffffff'; ctx.lineWidth=o.braceT>0?4:2; ctx.beginPath(); ctx.arc(hd.x,hd.y,hd.r+10,Math.PI/2-a,Math.PI/2+a); ctx.stroke(); } }
+/* A cut's dazed half: each stray ringed in its two claimants' colours (the victim's on the right, the biter's on the left). */
+function uiDrawDazed(){ var M=G.match, cx=G.cam.x, cy=G.cam.y, mx=W/2+40, my=H/2+40, i;
+  ctx.lineWidth=3;
+  if(M.host){ var ss=G.strays; for(i=0;i<ss.length;i++){ var s=ss[i]; if(s.dead||!(s.claimT>0)||Math.abs(s.x-cx)>mx||Math.abs(s.y-cy)>my) continue; uiDazedRing(s.x,s.y,s.claim0,s.claim1,s.claimT); } }
+  else { var d=Royale.fights&&Royale.fights.dazed?Royale.fights.dazed():[]; for(i=0;i+3<d.length;i+=4){ if(Math.abs(d[i]-cx)>mx||Math.abs(d[i+1]-cy)>my) continue; uiDazedRing(d[i],d[i+1],d[i+2],d[i+3],1); } } }
+function uiDazedRing(x,y,id0,id1,t){ var A=uiPlayer(id0), B=uiPlayer(id1);
+  ctx.globalAlpha=Math.min(1,0.4+0.25*t); ctx.strokeStyle=A?uiCol(A):'#efe7d2'; ctx.beginPath(); ctx.arc(x,y,SEG_R+13,-Math.PI/2,Math.PI/2); ctx.stroke(); // outside the strays' green glow
+  ctx.strokeStyle=B?uiCol(B):'#efe7d2'; ctx.beginPath(); ctx.arc(x,y,SEG_R+13,Math.PI/2,Math.PI*1.5); ctx.stroke(); }
 function uiDrawWaves(){
   for(var i=0;i<uiWaves.length;i++){ var w=uiWaves[i], u=Math.min(1,w.t/UI_WAVE_T), e=1-(1-u)*(1-u);
     if(w.small){ ctx.globalAlpha=1-u; ctx.strokeStyle=w.col; ctx.lineWidth=3*(1-u)+1; ctx.beginPath(); ctx.arc(w.x,w.y,4+26*e,0,TAU); ctx.stroke(); continue; } // a bounce: a ping, not a takedown
@@ -11393,6 +12057,18 @@ function uiDrawFeed(){
     y+=18; }
   ctx.globalAlpha=1;
 }
+/* The victim's line bursts in its colour: its strays, where they stand round the fallen head. */
+function uiBurst(P,hd,col){ var ss=G.strays, n=0, i; if(Math.abs(hd.x-G.cam.x)>W&&Math.abs(hd.y-G.cam.y)>H) return;
+  for(i=0;i<ss.length&&n<60;i++){ var s=ss[i]; if(s.dead||s.from!==P.id||Math.abs(s.x-hd.x)>400||Math.abs(s.y-hd.y)>400) continue; fxParts(s.x,s.y,3,[col,'#fff6df'],0.8); n++; } }
+/* Host: the victim's zombies stream into the nearest line (the killer's, standing over them) instead of lying there. */
+function uiStream(P){ var ss=G.strays, i; for(i=0;i<ss.length;i++){ var s=ss[i]; if(!s.dead&&s.from===P.id&&!s.hostile){ s.recallT=UI_STREAM_T; s.joinT=0; s.tellT=0; s.rageT=0; } } }
+/* The size eaten flies from the fallen head to the strip's count; the crown rides along when the champion fell. */
+function uiFly(hd,txt,col,crown){ var p=toScreen(hd.x,hd.y); uiFlyers.push({txt:txt,col:col,crown:!!crown,x0:p.x,y0:p.y,t:0}); if(uiFlyers.length>4) uiFlyers.shift(); }
+function uiDrawFlyers(){ if(!uiFlyers.length) return; var y=Math.min(H*0.35,uiHudBottom()+14), i;
+  ctx.font='900 18px Rubik,system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineWidth=4; ctx.strokeStyle='rgba(0,0,0,.75)';
+  for(i=0;i<uiFlyers.length;i++){ var f=uiFlyers[i], u=Math.min(1,f.t/UI_FLY_T), e=easeIO(u), x=f.x0+(W/2-f.x0)*e, yy=f.y0+(y-f.y0)*e-40*Math.sin(u*Math.PI);
+    ctx.globalAlpha=u<0.85?1:(1-u)/0.15; if(f.txt){ ctx.strokeText(f.txt,x,yy); ctx.fillStyle=f.col; ctx.fillText(f.txt,x,yy); } if(f.crown) uiCrownAt(x+(f.txt?26:0),yy,22); }
+  ctx.globalAlpha=1; }
 function uiDrawFlash(){ if(!uiFlash) return; var u=uiFlash.t/UI_FLASH_T; if(u>=1) return; ctx.globalAlpha=0.3*(1-u); ctx.fillStyle=uiFlash.col; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1; }
 function uiTick(dt){
   var i, ps=G.players||[];
@@ -11400,6 +12076,10 @@ function uiTick(dt){
   for(i=uiWaves.length-1;i>=0;i--){ uiWaves[i].t+=dt; if(uiWaves[i].t>=UI_WAVE_T) uiWaves.splice(i,1); }
   for(i=uiBounces.length-1;i>=0;i--){ uiBounces[i].t+=dt; if(uiBounces[i].t>=UI_BOUNCE_T) uiBounces.splice(i,1); }
   for(i=uiFeed.length-1;i>=0;i--){ uiFeed[i].t+=dt; if(uiFeed[i].t>=UI_FEED_T) uiFeed.splice(i,1); }
+  for(i=uiBlows.length-1;i>=0;i--){ uiBlows[i].t+=dt; if(uiBlows[i].t>=DUEL_BLOW_T) uiBlows.splice(i,1); }
+  uiDuelTick(dt);
+  for(i=uiFlyers.length-1;i>=0;i--){ uiFlyers[i].t+=dt; if(uiFlyers[i].t>=UI_FLY_T) uiFlyers.splice(i,1); }
+  if(uiPunchT>0){ uiPunchT=Math.max(0,uiPunchT-dt); var pu=uiPunchT/UI_PUNCH_T; G.camZoom=1+UI_PUNCH*pu*pu; } else if(G.camZoom&&G.camZoom!==1) G.camZoom=1; // punched in at the kill, easing back over UI_PUNCH_T
   if(uiFlash){ uiFlash.t+=dt; if(uiFlash.t>=UI_FLASH_T) uiFlash=null; }
 }
 function uiAliveN(){ var n=0, ps=G.players||[]; for(var i=0;i<ps.length;i++) if(ps[i].alive) n++; return n; }
@@ -11413,12 +12093,14 @@ function uiTakedown(P,cause,by){
   var log=uiKillLog[K.id]||(uiKillLog[K.id]=[]); log.push(t); while(log.length&&t-log[0]>UI_STREAK_T) log.shift();
   uiKillN[K.id]=(uiKillN[K.id]||0)+1; K.flareT=UI_FLARE_T;
   var first=!uiBlood, crown=!!(M.crown&&M.crown===P.id), rev=K===G.me&&!!M.revenge&&M.revenge===P.id, n=log.length; uiBlood=true;
-  var word=crown?'SHUTDOWN':rev?'REVENGE':n>=2?UI_STREAK[Math.min(4,n)]:first?'FIRST BLOOD':UI_STREAK[1];
-  var tier=Math.min(5,2+n+(crown||rev||first?1:0));
+  var word=crown?'CHAMPION DOWN':rev?'REVENGE':n>=2?UI_STREAK[Math.min(4,n)]:first?'FIRST BLOOD':UI_STREAK[1];
+  var size=(P.stats&&P.stats.hordeAtDeath)||0, tier=Math.min(5,2+n+(crown||rev||first?1:0)+(size>=UI_BIG?1:0));
+  uiBurst(P,hd,col); if(M.host) uiStream(P);
   if(K===G.me){ var was=G.cur; bindPlayer(G.me); stamp(word,tier,G.head.x,G.head.y); if(was) bindPlayer(was);
-    Snd.play('takedown',hd.x,hd.y,tier); shakeTo(8+tier*2); Haptic.tap(45); if(!calm()) uiFlash={col:col,t:0}; }
+    Snd.play('takedown',hd.x,hd.y,tier); if(crown) Snd.play('sting',hd.x,hd.y,5); shakeTo(UI_SHAKE); Haptic.pattern(crown?[40,60,40,60,80]:[30,50,60]); if(!calm()){ uiFlash={col:col,t:0}; uiPunchT=UI_PUNCH_T; G.camZoom=1+UI_PUNCH; }
+    uiFly(hd,size>0?'+'+size:'',col,crown); }
   else { Snd.play('takedown',hd.x,hd.y,0);
-    if(P!==G.me){ if(crown) banner(K.name+' took the crown off '+P.name+'.'); else if(first) banner('First blood: '+K.name+'.'); else if(UI_LEFT[left]) banner(UI_LEFT[left]); } }
+    if(P!==G.me){ if(first) banner('First blood: '+K.name+'.'); else if(UI_LEFT[left]) banner(UI_LEFT[left]); } } // a crown changing hands between others is on the tags and the strip, not a banner (owner, 28 Oct)
   return (uiLastKill={word:word,tier:tier,K:K,n:n});
 }
 
@@ -11467,11 +12149,13 @@ function uiUnpack(v){
 }
 
 Royale.ui={
+  blow:uiBlow, duel:function(){ return {P:uiDuel.P,t:uiDuel.t,hold:uiDuel.hold,alpha:uiDuelAlpha(),blows:uiBlows.slice()}; },
+  flyers:function(){ return uiFlyers.slice(); },
   update:function(dt){ uiSync(); uiTick(dt||0); if(G.match.phase==='play') uiWatch(); },
   draw:function(layer){ uiSync();
     if(layer==='ground') uiDrawAura();
     else if(layer==='over'){ uiDrawWaves(); uiDrawOver(); }
-    else if(layer==='hud'){ uiDrawFlash(); uiDrawHud(); if(G.match.phase==='play') uiDrawFeed(); } },
+    else if(layer==='hud'){ uiDrawFlash(); uiDrawHud(); if(G.match.phase==='play'){ uiDrawFeed(); uiDrawFlyers(); } } },
   /* P died. Only this device's own death is shown: one stamp for the cause and, if a player did it, one banner naming them. */
   onDeath:function(P,cause,by){
     uiSync(); var shown=uiTakedown(P,cause,by); if(P!==G.me) return shown;
