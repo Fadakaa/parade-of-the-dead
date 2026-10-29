@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Parade of the Dead</title>
+<title>Parade of Monsters</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
@@ -416,7 +416,7 @@ button.pick .ds{ color:#4a4458; }
 
 <div id="title" class="overlay">
   <div class="poster">
-    <div class="title-brand"><h1 aria-label="Parade of the Dead"><span class="t-top">PARADE</span><span class="t-low"><small>OF THE</small>DEAD</span></h1><span class="title-mascot" data-h-icon="zombie"></span></div>
+    <div class="title-brand"><h1 aria-label="Parade of Monsters"><span class="t-top">PARADE</span><span class="t-low"><small>OF</small>MONSTERS</span></h1><span class="title-mascot" data-h-icon="zombie"></span></div>
     <div class="tag">You're the zombie. Eat the building. Climb the floors. Steal their talents.</div>
     <button class="big" id="btnPlay">EAT</button><br>
     <button class="mid" id="btnSkills"><span data-h-icon="brain"></span> MUTATIONS</button>
@@ -985,7 +985,7 @@ var Haptic=(function(){
   return {tap:tap,pattern:pattern};
 })();
 var Snd=(function(){
-  var AC=null, master=null, sfxG=null, musG=null, voiceG=null, ambG=null, voiceBus=null, bedBus=null, noiseBuf=null, muted=false, pendingSong=null;
+  var AC=null, master=null, sfxG=null, musG=null, voiceG=null, ambG=null, voiceBus=null, bedBus=null, noiseBuf=null, muted=false, pmuted=false, pendingSong=null; // muted: the player's ♪ (horde_mute); pmuted: the portal's mute, which wins over it
   var lastT={}, song=null, seq=null, step=0, nextT=0, droneG=null, droneOsc=[], rotorN=null, tempoMul=1;
   var sampleBuf={}, sampleVoices=[], sampleLast={}, sampleLoaded=0, sampleFailed=0, sampleTotal=0;
   var beds={}, fallbackBeds={}, humanWeight=0, humanNear=0, zombieWeight=0, crowdFear=0, attackUntil=0, humanUntil=0, crowdNext=0;
@@ -1030,7 +1030,7 @@ var Snd=(function(){
     if(AC){ if(AC.state==='suspended'&&state!=='pause'&&state!=='ad') AC.resume(); return; }
     var C=window.AudioContext||window.webkitAudioContext; if(!C) return;
     try{ AC=new C(); }catch(e){ AC=null; return; }
-    master=AC.createGain(); master.gain.value=muted?0:1; master.connect(AC.destination);
+    master=AC.createGain(); master.gain.value=muted||pmuted?0:1; master.connect(AC.destination);
     sfxG=AC.createGain(); sfxG.gain.value=0.8;
     var limiter=AC.createDynamicsCompressor(); limiter.threshold.value=-12; limiter.knee.value=8; limiter.ratio.value=5; limiter.attack.value=0.003; limiter.release.value=0.12;
     sfxG.connect(limiter); limiter.connect(master);
@@ -1191,7 +1191,7 @@ var Snd=(function(){
     var zombies=G.segs.concat(G.strays);
     for(i=0;i<zombies.length;i++){ if(zombies[i].dead) continue; weight=att(zombies[i].x,zombies[i].y); weight*=weight; zw+=weight; zx+=zombies[i].x*weight; }
     humanWeight=hw; humanNear=nearest; zombieWeight=zw; crowdFear=hw?fear/hw:0;
-    if(muted) return;
+    if(muted||pmuted) return;
     var human=ensureBed('human','humanBed'), zombie=ensureBed('zombie','zombieBed'), t=AC.currentTime;
     var reacting=t<humanUntil, attacking=t<attackUntil;
     // 1-exp(-0.45*hw) rises smoothly with effective nearby population, then levels
@@ -1338,7 +1338,7 @@ var Snd=(function(){
   /* One clip for a whole group: the people shout the same word almost together
      (burned, zapped, slimed, roared, dizzy, stripped) or the crowd RUN, shabala. */
   function group(kind,x,y){
-    if(!live()||muted) return false;
+    if(!live()||muted||pmuted) return false;
     var t=AC.currentTime, mix=humanMix(null,x,y), v=mix.att; if(!v) return false;
     if(groupLast[kind]&&t-groupLast[kind]<1.2) return false;
     var name='human'+kind.charAt(0).toUpperCase()+kind.slice(1);
@@ -1693,7 +1693,7 @@ var Snd=(function(){
     if(chainLvl>=4){ if(i===2||i===10) osc('sine',150,42,t,0.16,0.4,musG); if(i===0||i===8) hat(t,0.7); } // from 30: a second kick and an accent
   }
   function play(name,x,y,arg){
-    if(!live()||muted) return false;
+    if(!live()||muted||pmuted) return false;
     var v=att(x,y); if(v<=0.02) return false;
     var t=AC.currentTime, p, hv, R;
     switch(name){
@@ -1858,9 +1858,11 @@ var Snd=(function(){
   function tempo(m){ tempoMul=m||1; }
   function pause(){ if(AC&&AC.state==='running') AC.suspend(); }
   function resume(){ if(AC&&AC.state==='suspended') AC.resume(); }
-  function toggleMute(){ muted=!muted; try{ localStorage.setItem('horde_mute',muted?'1':'0'); }catch(e){} if(master) master.gain.setTargetAtTime(muted?0:1,AC.currentTime,0.02); return muted; }
-  function isMuted(){ return muted; }
-  return {init:init,play:play,motif:motif,horde:horde,hordeStatus:function(){ return {tier:hordeTier,n:hordeN,moving:hordeMove,chain:chainLvl,snap:marchSnap(),fadeFrom:fadeFrom}; },key:function(){ return curKey; },note:note,attack:attack,human:human,capture:capture,group:group,humanIntent:humanIntent,humanAtt:humanAtt,humanMix:humanMix,focusStatus:focusStatus,boss:boss,music:music,stopMusic:stopMusic,stopCrowd:stopCrowd,duck:duck,rotor:rotor,tempo:tempo,pause:pause,resume:resume,toggleMute:toggleMute,isMuted:isMuted,crowd:crowd,sampleStatus:sampleStatus};
+  function toggleMute(){ muted=!muted; try{ localStorage.setItem('horde_mute',muted?'1':'0'); }catch(e){} if(master) master.gain.setTargetAtTime(muted||pmuted?0:1,AC.currentTime,0.02); return muted; }
+  function isMuted(){ return muted||pmuted; }
+  /* The portal's mute (CrazyGames muteAudio): silent while it is on, whatever the ♪ says; never saved, the player's own choice is kept under it. */
+  function portalMute(on){ pmuted=!!on; if(master) master.gain.setTargetAtTime(muted||pmuted?0:1,AC.currentTime,0.02); }
+  return {init:init,play:play,motif:motif,horde:horde,hordeStatus:function(){ return {tier:hordeTier,n:hordeN,moving:hordeMove,chain:chainLvl,snap:marchSnap(),fadeFrom:fadeFrom}; },key:function(){ return curKey; },note:note,attack:attack,human:human,capture:capture,group:group,humanIntent:humanIntent,humanAtt:humanAtt,humanMix:humanMix,focusStatus:focusStatus,boss:boss,music:music,stopMusic:stopMusic,stopCrowd:stopCrowd,duck:duck,rotor:rotor,tempo:tempo,pause:pause,resume:resume,toggleMute:toggleMute,isMuted:isMuted,portalMute:portalMute,crowd:crowd,sampleStatus:sampleStatus};
 })();
 
 /* ---------- ads (portal SDK adapters) ---------- */
@@ -1869,7 +1871,7 @@ var Snd=(function(){
    is up the game sits in state 'ad': update() does nothing, input is dropped, audio is suspended, and a safety timer
    lets go if an SDK never calls back. Anything that fails falls back to 'own': no ads, game unchanged. Empty ids
    disable a placement; GameDistribution needs a gameId to load at all. `?portal=mock` fakes ads on localhost. */
-var ADS_CFG={timeoutMs:6000,adStartMs:8000,adMaxMs:120000,minGap:180,afterReward:60,optionalGap:60,firstFloor:2,gd:{gameId:''},fb:{rewarded:'',interstitial:''},playgama:{rewarded:'revive',interstitial:'floor'}};
+var ADS_CFG={timeoutMs:6000,adStartMs:8000,adMaxMs:120000,minGap:180,afterReward:60,optionalGap:60,firstFloor:2,gd:{gameId:''},fb:{rewarded:'',interstitial:''},playgama:{rewarded:'revive',interstitial:'floor'},cg:{ads:false}}; // cg.ads: CrazyGames serves no ads in a Basic Launch (owner, 28 Oct); true once it moves to Full Launch
 var Ads=(function(){
   var cfg=ADS_CFG, adapter=null, portalId='own', ready=false, busyNow=false, prevState=null, playing=false, floorN=0, lastAdAt=-1e12, lastRewardAt=-1e12, timer=null, curFail=null;
   function nop(){}
@@ -1935,7 +1937,7 @@ var Ads=(function(){
   }
   function interstitial(cb){
     cb=once(cb||nop); floorN++; var t=now();
-    if(!ready||busyNow||!adapter||floorN<cfg.firstFloor||t-lastAdAt<cfg.minGap*1000||t-lastRewardAt<cfg.afterReward*1000) return cb();
+    if(!ready||busyNow||!adapter||(adapter.adsOff&&adapter.adsOff())||floorN<cfg.firstFloor||t-lastAdAt<cfg.minGap*1000||t-lastRewardAt<cfg.afterReward*1000) return cb();
     adBegin(); META.ads.shown++;
     var fin=once(function(){ clearTimer(); adEnd(); lastAdAt=now(); saveMeta(); cb(); });
     armTimer(fin,cfg.adStartMs);
@@ -1961,10 +1963,14 @@ var Ads=(function(){
     sdk:function(){ var C=win().CrazyGames; return C&&C.SDK; },
     init:function(d){ var S=this.sdk(), self=this; if(!S) return d(false); var fin=once(d);
       try{ S.init().then(function(){ if(S.environment==='disabled') return fin(false); try{ S.game.loadingStart(); }catch(e){}
-        function go(b){ self.adblock=!!b; self.ready=true; fin(true); }
+        self.listen(S); function go(b){ self.adblock=!!b; self.ready=true; fin(true); }
         var ab=null; try{ ab=S.ad.hasAdblock(); }catch(e){} if(ab&&ab.then) ab.then(go,function(){ go(false); }); else go(false); },function(){ fin(false); }); }catch(e){ fin(false); } },
     loadingDone:function(){ this.sdk().game.loadingStop(); },gameplayStart:function(){ this.sdk().game.gameplayStart(); },gameplayStop:function(){ this.sdk().game.gameplayStop(); },
-    canReward:function(){ return this.ready&&!this.adblock; },
+    /* the portal's mute wins over the game's own (CrazyGames: muteAudio must not be undone by an in-game toggle) */
+    listen:function(S){ function apply(st){ try{ Snd.portalMute(!!(st&&st.muteAudio)); setMuteBtn(); }catch(e){} }
+      try{ apply(S.game.settings); S.game.addSettingsChangeListener(apply); }catch(e){} },
+    adsOff:function(){ return !cfg.cg.ads; },
+    canReward:function(){ return cfg.cg.ads&&this.ready&&!this.adblock; },
     rewarded:function(p,cb){ this.sdk().ad.requestAd('rewarded',{adStarted:adStarted,adFinished:function(){ cb(true,''); },adError:function(e){ cb(false,e&&e.code==='adCooldown'?'unavailable':'failed'); }}); },
     interstitial:function(cb){ this.sdk().ad.requestAd('midgame',{adStarted:adStarted,adFinished:function(){ cb(); },adError:function(){ cb(); }}); }};
   /* GameDistribution: GD_OPTIONS must exist before the loader runs, so prepare() sets it. A rewarded ad counts only
@@ -4469,7 +4475,7 @@ function rampRecord(){
   if(rec.t>M.bestT){ M.bestT=rec.t; rec.newT=true; } if(rec.mob>M.bestMob){ M.bestMob=rec.mob; rec.newMob=true; } if(rec.lvl>M.bestLvl) M.bestLvl=rec.lvl;
   if(first) M.runs++; M.last={t:rec.t,mob:rec.mob,lvl:rec.lvl,wave:rec.wave,skin:rec.skin,tone:rec.tone}; R.rec=rec; saveMeta(); return rec;
 }
-function rampShareText(rec){ return 'I lasted '+fmt(rec.t)+' in Parade of the Dead Rampage with '+rec.mob+' zombies behind me.'; }
+function rampShareText(rec){ return 'I lasted '+fmt(rec.t)+' in Parade of Monsters Rampage with '+rec.mob+' zombies behind me.'; }
 /* The share card: a 900x1200 poster in the ink-and-paper look, drawn with the game's own primitives (ctx swapped like
    paintTeaser): the run's skin leading a trail of its horde, then the numbers. No URL yet, no platform emoji. */
 function rampShareCard(rec){
@@ -4481,7 +4487,7 @@ function rampShareCard(rec){
   ctx.fillStyle='#efe7d2'; ctx.fillRect(40,40,W0-100,H0-100); ctx.strokeStyle='#1c1a24'; ctx.lineWidth=6; ctx.strokeRect(40,40,W0-100,H0-100);
   ctx.fillStyle='rgba(102,72,53,.13)'; for(var py=50;py<H0-60;py+=10) for(var px=50;px<W0-60;px+=10){ ctx.fillRect(px,py,1.5,1.5); }
   ctx.textAlign='center'; ctx.textBaseline='alphabetic';
-  var name='PARADE OF THE DEAD', fs=150; ctx.font='400 '+fs+'px '+disp; var nw=ctx.measureText(name).width; if(nw>700){ fs=Math.floor(fs*700/nw); ctx.font='400 '+fs+'px '+disp; } // the full name, fitted inside the border
+  var name='PARADE OF MONSTERS', fs=150; ctx.font='400 '+fs+'px '+disp; var nw=ctx.measureText(name).width; if(nw>700){ fs=Math.floor(fs*700/nw); ctx.font='400 '+fs+'px '+disp; } // the full name, fitted inside the border
   ctx.fillStyle='#b3202b'; ctx.fillText(name,W0/2+6,206); ctx.fillStyle='#1c1a24'; ctx.fillText(name,W0/2,200);
   ctx.fillStyle='#b3202b'; ctx.font='400 64px '+disp; ctx.fillText('RAMPAGE',W0/2,270);
   // the horde: a trail of zombies shrinking into the distance behind the skin's head
@@ -4504,11 +4510,11 @@ function shareRamp(){
   var R=G&&G.ramp, rec=R&&R.rec; if(!rec) return;
   var text=rampShareText(rec), cv=rampShareCard(rec), nav=typeof navigator==='object'?navigator:null;
   function fallback(){ try{ if(nav&&nav.share) return nav.share({text:text}).catch(function(){}); }catch(e){}
-    function download(){ try{ var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='parade-of-the-dead-rampage.png'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){} }
+    function download(){ try{ var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='parade-of-monsters-rampage.png'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){} }
     try{ if(nav&&nav.clipboard&&nav.clipboard.writeText){ nav.clipboard.writeText(text).then(function(){ addFloat(G.head.x,G.head.y-40,'copied','#efe7d2',14); },download); return; } }catch(e){}
     download(); }
   try{ if(!cv.toBlob||!nav||!nav.canShare){ fallback(); return; }
-    cv.toBlob(function(blob){ try{ var f=new File([blob],'parade-of-the-dead-rampage.png',{type:'image/png'}); if(nav.canShare({files:[f]})){ nav.share({files:[f],text:text}).catch(function(){}); return; } }catch(e){} fallback(); },'image/png'); }
+    cv.toBlob(function(blob){ try{ var f=new File([blob],'parade-of-monsters-rampage.png',{type:'image/png'}); if(nav.canShare({files:[f]})){ nav.share({files:[f],text:text}).catch(function(){}); return; } }catch(e){} fallback(); },'image/png'); }
   catch(e){ fallback(); }
 }
 /* Levelling (owner, 8 Oct: by eating, never by time): every person eaten is one point; a level, and a draft, at 5, 12,
@@ -5669,6 +5675,7 @@ function spawnEmber(hz){
 /* Floating text (owner, 10 Oct: too much of it). Routine chatter is silent (score pops, small combos, cut-off zombies
    rejoining or being put down, lost powers, people's shouts); the rest merges: the same text close by within the second
    becomes one float with a count ("rejoined x6" would be one line, not six). */
+var FLOAT_MAX=3, FLOAT_FADE=0.35; /* at most three floats up at once (playtest, 28 Oct) */
 var FLOAT_QUIET=/^(\+\d+|x\d+ combo|lost .*|rejoined|stray put down|shove!|heave!|barricading!|huddling|scatter!|trap set|no good|turned|burnt|slimed|fire|laser|evacuated|escaped!|calls security|SMASH \+5|grenade!|torching the floor!|deflect!|covered in bile)$/;
 function floatRuns(text,size){ var runs=[], width=0, at=0, re=/:([a-z]+):/g, m; ctx.save(); ctx.font='800 '+size+'px Rubik,system-ui,sans-serif';
   function word(t){ if(!t) return; var w=ctx.measureText(t).width; runs.push({text:t,w:w}); width+=w; }
@@ -5679,7 +5686,17 @@ function addFloat(x,y,text,color,size){
   if(G&&G.floats&&G.floats.length>=300) G.floats.splice(0,G.floats.length-299); /* a hard ceiling for the biggest fights */
   size=size||14;
   for(var i=G.floats.length-1;i>=0;i--){ var f=G.floats[i]; if(f.base===text&&f.life>0.5&&Math.abs(f.x-x)<140&&Math.abs(f.y-y)<140){ f.n=(f.n||1)+1; var rr=floatRuns(text+' x'+f.n,size); f.text=text+' x'+f.n; f.runs=rr.runs; f.width=rr.width; f.life=1.3; return; } }
+  var live=0, old=null; for(i=0;i<G.floats.length;i++){ if(G.floats[i].life>FLOAT_FADE){ live++; if(!old) old=G.floats[i]; } }
+  if(live>=FLOAT_MAX&&old) old.life=FLOAT_FADE; /* playtest, 28 Oct (still too many words): a fourth float fades the oldest out */
   var r=floatRuns(text,size); G.floats.push({x:x,y:y,text:text,base:text,runs:r.runs,width:r.width,color:color,size:size,life:1.3});
+}
+/* One fracture float a second: the next cut inside the second adds its zombies to the float that is up instead of
+   stacking a second line. */
+function fracFloat(x,y,n){
+  var ff=G.fracFloat, f=ff&&ff.f;
+  if(f&&f.life>0&&G.t-ff.at<1&&G.floats.indexOf(f)>=0){ ff.n+=n; var t='MOB FRACTURED — '+ff.n+' strayed', rr=floatRuns(t,14); f.text=t; f.base=t; f.runs=rr.runs; f.width=rr.width; f.life=1.3; f.x=x; f.y=y; ff.at=G.t; return; }
+  addFloat(x,y,'MOB FRACTURED — '+n+' strayed','#f2b134',14);
+  for(var i=G.floats.length-1;i>=0;i--){ if(G.floats[i].base==='MOB FRACTURED — '+n+' strayed'){ G.fracFloat={f:G.floats[i],n:n,at:G.t}; return; } }
 }
 /* One banner at a time (owner, 10 Oct): a new one within 1.2s of the last waits its turn; only the newest waiting one is
    kept, so a burst of news never stacks up. */
@@ -5791,7 +5808,7 @@ function eat(h,byHorde){
   spillBlood(h.x,h.y,Math.atan2(h.y-hd.y,h.x-hd.x));
   addFloat(h.x,h.y-18,'+'+pts,'#f2b134',byHorde?13:15);
   if(G.combo>=3) addFloat(h.x,h.y-36,'x'+G.combo+' combo','#55efc4',12);
-  if(!G.seen[ty.ab]){ G.seen[ty.ab]=1; Snd.play('power',hd.x,hd.y,{id:ty.ab}); banner(ab.icon+' NEW POWER: '+ab.name+' — '+ab.desc); }
+  if(!G.seen[ty.ab]){ G.seen[ty.ab]=1; Snd.play('power',hd.x,hd.y,{id:ty.ab}); if(!G.match) banner(ab.icon+' NEW POWER: '+ab.name+' — '+ab.desc); } // a match has no NEW POWER banner (owner, 28 Oct: too frequent); the sound and the HUD chip say it
   else if(G.stacks[ty.ab]%5===0) addFloat(h.x,h.y-54,ab.icon+' '+ab.name+' ×'+G.stacks[ty.ab],ab.color,12); // the HUD chip already counts; only every fifth stack pops (owner, 10 Oct: less text)
   feelEat(h);
   if(h.key) unlockDoor();
@@ -5814,7 +5831,7 @@ function removeSeg(i,cause){
     Snd.play('fracture');
     var cut=G.segs.splice(i);
     for(var k=0;k<cut.length;k++) makeStray(cut[k]);
-    addFloat(s.x,s.y-30,'MOB FRACTURED — '+cut.length+' strayed','#f2b134',14);
+    fracFloat(s.x,s.y-30,cut.length);
     if(!G.match) offerRecall();
 
     if(sk('mob')>=3&&!(G.ranksCd>0)&&!(G.surgeT>0)) closeRanks(); // from rank 3 a cut sets Mob off; ranks 1-2 come at random
@@ -7316,7 +7333,7 @@ function drawExit(e){
   ctx.fillStyle='#08060b'; ctx.fillRect(-hl+6,0,L-12,WALL-2);
   ctx.fillStyle='#14121a'; ctx.fillRect(-hl-4,-4,8,WALL+4); ctx.fillRect(hl-4,-4,8,WALL+4);
   /* chevrons climbing into the wall once open */
-  if(s>0.9){ ctx.fillStyle='rgba(242,177,52,0.75)'; for(k=0;k<2;k++){ var cy=-D+6+((G.t*36+k*D/2)%(D-12)); ctx.beginPath(); ctx.moveTo(0,cy+8); ctx.lineTo(-10,cy); ctx.lineTo(-5,cy); ctx.lineTo(0,cy+4); ctx.lineTo(5,cy); ctx.lineTo(10,cy); ctx.closePath(); ctx.fill(); } }
+  if(s>0.9){ var gp=guidePulse(); ctx.fillStyle='rgba(242,177,52,'+(0.55+(gp-1)*1.6).toFixed(2)+')'; for(k=0;k<2;k++){ var cy=-D+6+((G.t*36+k*D/2)%(D-12)); ctx.save(); ctx.translate(0,cy+4); ctx.scale(gp,gp); ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-10,-4); ctx.lineTo(-5,-4); ctx.lineTo(0,0); ctx.lineTo(5,-4); ctx.lineTo(10,-4); ctx.closePath(); ctx.fill(); ctx.restore(); } }
   /* roller shutter: covers [-D*(1-s), 0] */
   if(s<1){ var top=-D*(1-s); ctx.fillStyle='#5a5664'; ctx.fillRect(-hl+2,top,L-4,-top); ctx.strokeStyle='rgba(20,18,26,0.55)'; ctx.lineWidth=1.5; ctx.beginPath(); for(var yy=top+5;yy<0;yy+=6){ ctx.moveTo(-hl+2,yy); ctx.lineTo(hl-2,yy); } ctx.stroke(); ctx.strokeStyle='#14121a'; ctx.lineWidth=2; ctx.strokeRect(-hl+2,top,L-4,-top);
     if(s<0.05){ ctx.fillStyle='#c9a227'; ctx.strokeStyle='#14121a'; ctx.lineWidth=1.5; rr(-7,-D+4,14,11,2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(0,-D+4,5,Math.PI,0); ctx.stroke(); } }
@@ -7367,7 +7384,20 @@ function drawExitArrow(){
   var nb=nearestBadge(450); if(nb) drawOffscreenArrow(nb.x,nb.y,'badge','#7fe3ff');
   if(G.mini&&!G.mini.dead&&G.mini.awake) drawOffscreenArrow(G.mini.x,G.mini.y,'mini boss','#ffd65a');
   if(G.hunter) drawOffscreenArrow(G.hunter.x,G.hunter.y,G.hunter.kind==='mech'?'mech':'paladin','#ff5a66');
-  var g=exitGuide(); if(g) drawOffscreenArrow(g.x,g.y,g.label,'#f2b134');
+  var g=exitGuide(); if(g) drawOffscreenArrow(g.x,g.y,g.label,'#ffd65a',true);
+}
+/* The guide's pulse once the quota is met (playtest, 28 Oct: still not clear where to go, and no more words): scale
+   1 to 1.25 at 1.6 Hz on the stairs arrow, the stairwell's chevrons and the next doorway on the route; steady under
+   Reduce motion. */
+function guidePulse(){ return calm()?1.12:1.125+0.125*Math.sin(G.t*TAU*1.6); }
+function drawRouteGuide(){
+  var F=G.F; if(!G.exitOpen||!F||!F.layout||!F.doors||!F.doors.length) return;
+  var g=exitGuide(); if(!g||g.di===undefined) return;
+  var d=F.doors[g.di], a=roomAt(F,G.head.x,G.head.y), fwd=d.a===a?1:-1, fx=d.nx*fwd, fy=d.ny*fwd, h=d.axis==='h', tx=h?1:0, ty=h?0:1, p=guidePulse(), k;
+  ctx.strokeStyle='rgba(242,177,52,'+(0.45+(p-1)*1.6).toFixed(2)+')'; ctx.lineWidth=6; ctx.lineCap='round';
+  for(k=-2;k<=2;k++){ if(k===0) continue; var off=k*26; ctx.save(); ctx.translate(d.cx+fx*off,d.cy+fy*off); ctx.scale(p,p); /* each chevron grows on its own spot, over the baked one */
+    ctx.beginPath(); ctx.moveTo(-fx*10+tx*18,-fy*10+ty*18); ctx.lineTo(fx*6,fy*6); ctx.lineTo(-fx*10-tx*18,-fy*10-ty*18); ctx.stroke(); ctx.restore(); }
+  ctx.lineCap='butt';
 }
 /* Where the stairs pointer points once the stairs are open: the next doorway on the route ("this way") until you are
    in the stairs room, then the stairs themselves. Open floors point straight at the stairs. */
@@ -7386,7 +7416,7 @@ function exitGuide(){
   if(!F.layout||!F.doors.length) return stairs;
   var a=roomAt(F,G.head.x,G.head.y), b=lt?roomAt(F,ex,ey):F.roomOf.stairs; if(a===b) return stairs;
   var di=F.next[a][b]; if(di<0) return stairs;
-  var d=F.doors[di]; return {x:d.cx,y:d.cy,label:'this way',door:d.id};
+  var d=F.doors[di]; return {x:d.cx,y:d.cy,label:'this way',door:d.id,di:di};
 }
 /* A step toward the stairs for a body of radius r: through the rooms, then square in front of the stairwell door, then in. */
 function stairsWaypoint(F,x,y,r){
@@ -7399,15 +7429,16 @@ function stairsWaypoint(F,x,y,r){
   if(dep>0&&lat<half-r*0.4) return {x:ex,y:ey};
   return {x:pcx+nx*(r+40),y:pcy+ny*(r+40)};
 }
-function drawOffscreenArrow(wx,wy,label,color){
+function drawOffscreenArrow(wx,wy,label,color,guide){
   var e={x:wx,y:wy,w:0,h:0};
   var ex=e.x+e.w/2-G.cam.x+W/2, ey=e.y+e.h/2-G.cam.y+H/2;
   if(ex>0&&ex<W&&ey>0&&ey<H) return;
   var cx=W/2, cy=H/2, dx=ex-cx, dy=ey-cy, a=Math.atan2(dy,dx), s=1;
   if(dx>0) s=Math.min(s,(W-44-cx)/dx); if(dx<0) s=Math.min(s,(44-cx)/dx);
   if(dy>0) s=Math.min(s,(H-64-cy)/dy); if(dy<0) s=Math.min(s,(130-cy)/dy);
-  var tx=cx+dx*s, ty=cy+dy*s, pulse=1+0.1*Math.sin(G.t*8);
+  var tx=cx+dx*s, ty=cy+dy*s, pulse=guide?guidePulse():1+0.1*Math.sin(G.t*8);
   ctx.save(); ctx.translate(tx,ty); ctx.rotate(a); ctx.scale(pulse,pulse);
+  if(guide){ ctx.globalAlpha=0.22*(pulse-1)/0.25+0.08; ctx.fillStyle=color; ctx.beginPath(); ctx.arc(0,0,26,0,TAU); ctx.fill(); ctx.globalAlpha=1; } /* a soft halo that breathes with the arrow */
   ctx.fillStyle=color; ctx.strokeStyle='#14121a'; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(18,0); ctx.lineTo(-12,-14); ctx.lineTo(-6,0); ctx.lineTo(-12,14); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.restore();
@@ -7564,6 +7595,7 @@ function draw(){
   for(i=0;i<G.beams.length;i++){ var be=G.beams[i], bu=1-be.t/0.3; ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.strokeStyle='rgba(143,216,255,'+(bu*0.6)+')'; ctx.lineWidth=18*bu; ctx.beginPath(); ctx.moveTo(be.x1,be.y1); ctx.lineTo(be.x2,be.y2); ctx.stroke(); ctx.strokeStyle='rgba(255,255,255,'+bu+')'; ctx.lineWidth=4*bu+1; ctx.beginPath(); ctx.moveTo(be.x1,be.y1); ctx.lineTo(be.x2,be.y2); ctx.stroke(); ctx.restore(); }
   for(i=0;i<G.booms.length;i++){ var bm=G.booms[i], u=bm.t/0.45; ctx.strokeStyle=bm.roar?'rgba(239,231,210,'+(1-u)+')':(bm.blue?'rgba(116,185,255,'+(1-u)+')':'rgba(255,200,80,'+(1-u)+')'); ctx.lineWidth=6*(1-u)+1; ctx.beginPath(); ctx.arc(bm.x,bm.y,bm.r*(0.3+0.7*u),0,TAU); ctx.stroke(); }
 
+  if(state==='play'||state==='shot') drawRouteGuide();
   ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,0.65)';
   for(i=0;i<G.floats.length;i++){ var f=G.floats[i]; ctx.globalAlpha=Math.min(1,f.life); ctx.font='800 '+f.size+'px Rubik,system-ui,sans-serif'; ctx.fillStyle=f.color; ctx.textAlign='left';
     var fx=f.x-f.width/2; for(var fi=0;fi<f.runs.length;fi++){ var fr=f.runs[fi]; if(fr.icon) Art.draw(fr.icon,fx+fr.w/2,f.y,f.size*1.4); else { ctx.strokeText(fr.text,fx,f.y); ctx.fillText(fr.text,fx,f.y); } fx+=fr.w; }
@@ -7581,7 +7613,7 @@ function draw(){
   drawFlyers(); if(state==='climb') drawClimb();
   if(G.match){ var jh=joyHome(); if(jh&&!(joy&&joy.home)) drawJoyHome(jh.x,jh.y,jh.x,jh.y,false); } // the resting stick (ROYALE.md §14), under the match HUD
   if(G.match) Royale.draw('hud');
-  if(state==='play') drawExitArrow();
+  if(state==='play'||state==='shot') drawExitArrow(); /* 'shot' is the screenshot tool's frozen state */
   if(joy){
     var jdx=joy.x-joy.ox, jdy=joy.y-joy.oy, l=Math.hypot(jdx,jdy), cl=Math.min(l,JOY_R);
     var kx=l?joy.ox+jdx/l*cl:joy.ox, ky=l?joy.oy+jdy/l*cl:joy.oy;
@@ -12333,7 +12365,7 @@ function openSoundboard(){
     ['Power motifs',Object.keys({sprint:1,beefy:1,clout:1,profit:1,shield:1,fire:1,electric:1,roar:1,undo:1}).map(function(id){ return [id,'m:'+id]; })],
     ['Power procs',[['adrenaline','adren'],['deflector','ricochet'],['veteran','absorb'],['iron jaw','tink'],['riot shield','shieldthud'],['beefy gulp','gulp'],['shockwave','shock'],['frenzy lunge','lunge'],['brute shove','shove'],['furniture scrape','scrape'],['brute smash','smash'],['fire crackle','crackle'],['bile splat','splat'],['electric arc','arc'],['wind-up','windup']]],
     ['Parade Royale',[['takedown (yours)','td:4'],['takedown (theirs)','td:0']]]];
-  var html='<h2 style="font:28px Bangers,Impact,sans-serif;letter-spacing:2px;margin:0 0 6px">PARADE OF THE DEAD SOUNDBOARD</h2><div style="opacity:.7;margin-bottom:10px">Tap to hear. Music + mob size below.</div>';
+  var html='<h2 style="font:28px Bangers,Impact,sans-serif;letter-spacing:2px;margin:0 0 6px">PARADE OF MONSTERS SOUNDBOARD</h2><div style="opacity:.7;margin-bottom:10px">Tap to hear. Music + mob size below.</div>';
   groups.forEach(function(g){ html+='<div style="margin:12px 0 4px;font-weight:800">'+g[0]+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">'; g[1].forEach(function(b){ html+='<button data-s="'+b[1]+'" style="font:700 12px Rubik,system-ui,sans-serif;padding:8px 10px;border:2px solid #efe7d2;background:#2b2733;color:#efe7d2;border-radius:4px">'+b[0]+'</button>'; }); html+='</div>'; });
   html+='<div style="margin:16px 0 4px;font-weight:800">Music and mob size</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+['office','gym','lab','streets'].map(function(k){ return '<button data-song="'+k+'" style="font:700 12px Rubik,system-ui,sans-serif;padding:8px 10px;border:2px solid #a9df57;background:#2b2733;color:#a9df57;border-radius:4px">'+k+'</button>'; }).join('')+'<button data-song="stop" style="font:700 12px Rubik,system-ui,sans-serif;padding:8px 10px;border:2px solid #ff5a66;background:#2b2733;color:#ff5a66;border-radius:4px">stop</button></div>';
   html+='<label style="display:block;margin-top:10px">Mob size: <b id="sfxN">0</b><input id="sfxSize" type="range" min="0" max="300" value="0" style="width:100%"></label><label><input id="sfxWalk" type="checkbox" checked> walking</label> <label><input id="sfxChain" type="range" min="0" max="2" value="0"> chain heat</label>';
